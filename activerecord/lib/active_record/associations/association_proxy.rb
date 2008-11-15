@@ -211,7 +211,7 @@ module ActiveRecord
             if block_given?
               @target.send(method, *args)  { |*block_args| yield(*block_args) }
             else
-              @target.send(method, *args)
+              method == :to_a ? Array(@target) : @target.send(method, *args)
             end
           end
         end
