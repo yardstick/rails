@@ -1,7 +1,7 @@
 module ActionController
   module Routing
     class Segment #:nodoc:
-      RESERVED_PCHAR = ':@&=+$,;'
+      RESERVED_PCHAR = ':@&=+$,;/'
       SAFE_PCHAR = "#{URI::REGEXP::PATTERN::UNRESERVED}#{RESERVED_PCHAR}"
       UNSAFE_PCHAR = Regexp.new("[^#{SAFE_PCHAR}]", false, 'N').freeze
 
