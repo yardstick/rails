@@ -1,3 +1,4 @@
+=begin
 module ActiveSupport
   # If true, use ISO 8601 format for dates and times. Otherwise, fall back to the Active Support legacy format.
   mattr_accessor :use_standard_json_time_format
@@ -21,3 +22,6 @@ end
 
 require 'active_support/json/encoding'
 require 'active_support/json/decoding'
+=end
+
+require 'yajl/json_gem'
