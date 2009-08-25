@@ -24,4 +24,19 @@ require 'active_support/json/encoding'
 require 'active_support/json/decoding'
 =end
 
+module ActiveSupport
+  module JSON
+    extend self
+
+    def encode(value, options = {})
+      Yajl::Encoder.encode(value)
+    end
+
+    def decode(json)
+      Yajl::Parser.parse(json)
+    end
+  end
+end
+
+
 require 'yajl/json_gem'
