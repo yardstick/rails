@@ -24,6 +24,10 @@ require 'active_support/json/encoding'
 require 'active_support/json/decoding'
 =end
 
+require 'active_support/json/encoders/date'
+require 'active_support/json/encoders/date_time'
+require 'active_support/json/encoders/time'
+
 module ActiveSupport
   module JSON
     extend self
