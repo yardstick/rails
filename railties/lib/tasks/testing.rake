@@ -7,7 +7,7 @@ def recent_tests(source_pattern, test_path, touched_since = 10.minutes.ago)
       tests = []
       source_dir = File.dirname(path).split("/")
       source_file = File.basename(path, '.rb')
-      
+
       # Support subdirs in app/models and app/controllers
       modified_test_path = source_dir.length > 2 ? "#{test_path}/" << source_dir[1..source_dir.length].join('/') : test_path
 
@@ -18,7 +18,7 @@ def recent_tests(source_pattern, test_path, touched_since = 10.minutes.ago)
       # For modified files in app, run tests in subdirs too. ex. /test/functional/account/*_test.rb
       test = "#{modified_test_path}/#{File.basename(path, '.rb').sub("_controller","")}"
       FileList["#{test}/*_test.rb"].each { |f| tests.push f } if File.exist?(test)
-		
+
       return tests
 
     end
@@ -59,11 +59,11 @@ namespace :test do
       recent_tests('app/controllers/**/*.rb', 'test/functional', since)
 
     t.libs << 'test'
-    t.verbose = true
+    t.verbose = false
     t.test_files = touched.uniq
   end
   Rake::Task['test:recent'].comment = "Test recent changes"
-  
+
   Rake::TestTask.new(:uncommitted => "db:test:prepare") do |t|
     def t.file_list
       if File.directory?(".svn")
@@ -82,37 +82,37 @@ namespace :test do
 
       unit_tests.uniq + functional_tests.uniq
     end
-    
+
     t.libs << 'test'
-    t.verbose = true
+    t.verbose = false
   end
   Rake::Task['test:uncommitted'].comment = "Test changes since last checkin (only Subversion and Git)"
 
   Rake::TestTask.new(:units => "db:test:prepare") do |t|
     t.libs << "test"
     t.pattern = 'test/unit/**/*_test.rb'
-    t.verbose = true
+    t.verbose = false
   end
   Rake::Task['test:units'].comment = "Run the unit tests in test/unit"
 
   Rake::TestTask.new(:functionals => "db:test:prepare") do |t|
     t.libs << "test"
     t.pattern = 'test/functional/**/*_test.rb'
-    t.verbose = true
+    t.verbose = false
   end
   Rake::Task['test:functionals'].comment = "Run the functional tests in test/functional"
 
   Rake::TestTask.new(:integration => "db:test:prepare") do |t|
     t.libs << "test"
     t.pattern = 'test/integration/**/*_test.rb'
-    t.verbose = true
+    t.verbose = false
   end
   Rake::Task['test:integration'].comment = "Run the integration tests in test/integration"
 
   Rake::TestTask.new(:benchmark => 'db:test:prepare') do |t|
     t.libs << 'test'
     t.pattern = 'test/performance/**/*_test.rb'
-    t.verbose = true
+    t.verbose = false
     t.options = '-- --benchmark'
   end
   Rake::Task['test:benchmark'].comment = 'Benchmark the performance tests'
@@ -120,7 +120,7 @@ namespace :test do
   Rake::TestTask.new(:profile => 'db:test:prepare') do |t|
     t.libs << 'test'
     t.pattern = 'test/performance/**/*_test.rb'
-    t.verbose = true
+    t.verbose = false
   end
   Rake::Task['test:profile'].comment = 'Profile the performance tests'
 
@@ -133,7 +133,7 @@ namespace :test do
       t.pattern = 'vendor/plugins/*/**/test/**/*_test.rb'
     end
 
-    t.verbose = true
+    t.verbose = false
   end
   Rake::Task['test:plugins'].comment = "Run the plugin tests in vendor/plugins/*/**/test (or specify with PLUGIN=name)"
 end
