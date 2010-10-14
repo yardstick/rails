@@ -3,11 +3,15 @@ require 'yaml'
 require 'optparse'
 
 include_password = false
+execute_query = nil
 
 OptionParser.new do |opt|
   opt.banner = "Usage: dbconsole [options] [environment]"
   opt.on("-p", "--include-password", "Automatically provide the password from database.yml") do |v|
     include_password = true
+  end
+  opt.on("-e", "--execute QUERY", "Execute QUERY and exit instead of loading interactive console") do |query|
+    execute_query = query
   end
   opt.parse!(ARGV)
   abort opt.to_s unless (0..1).include?(ARGV.size)
@@ -43,6 +47,11 @@ when "mysql"
     args << "--password=#{config['password']}"
   elsif config['password'] && !config['password'].empty?
     args << "-p"
+  end
+
+  if execute_query
+    args << "--execute"
+    args << execute_query
   end
 
   args << config['database']
