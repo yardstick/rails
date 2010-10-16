@@ -381,10 +381,10 @@ module ActionView
       #   auto_link(post_body, :all, :target => "_blank")     # => Once upon\na time
       #   # => "Welcome to my new blog at <a href=\"http://www.myblog.com/\" target=\"_blank\">http://www.myblog.com</a>.
       #         Please e-mail me at <a href=\"mailto:me@email.com\">me@email.com</a>."
-      def auto_link(text, *args, &block)#link = :all, href_options = {}, &block)
+      def auto_link(text, *args, &block)
         return '' if text.blank?
 
-        options = args.size == 2 ? {} : args.extract_options! # this is necessary because the old auto_link API has a Hash as its last parameter
+        options = args.size == 2 ? {} : args.extract_options!
         unless args.empty?
           options[:link] = args[0] || :all
           options[:html] = args[1] || {}
@@ -392,12 +392,13 @@ module ActionView
         options.reverse_merge!(:link => :all, :html => {})
 
         case options[:link].to_sym
-          when :all                         then auto_link_email_addresses(auto_link_urls(text, options[:html], &block), &block)
-          when :email_addresses             then auto_link_email_addresses(text, &block)
+          when :all                         then auto_link_email_addresses(auto_link_urls(text, options[:html], &block), options[:html], &block)
+          when :email_addresses             then auto_link_email_addresses(text, options[:html], &block)
           when :urls                        then auto_link_urls(text, options[:html], &block)
         end
       end
 
+      private
       # Creates a Cycle object whose _to_s_ method cycles through elements of an
       # array every time it is called. This can be used for example, to alternate
       # classes for table rows.  You can use named cycles to allow nesting in loops.
@@ -544,55 +545,61 @@ module ActionView
           @_cycles[name] = cycle_object
         end
 
+
         AUTO_LINK_RE = %r{
-                        (                          # leading text
-                          <\w+.*?>|                # leading HTML tag, or
-                          [^=!:'"/]|               # leading punctuation, or
-                          ^                        # beginning of line
-                        )
-                        (
-                          (?:https?://)|           # protocol spec, or
-                          (?:www\.)                # www.*
-                        )
-                        (
-                          [-\w]+                   # subdomain or domain
-                          (?:\.[-\w]+)*            # remaining subdomains or domain
-                          (?::\d+)?                # port
-                          (?:/(?:[~\w\+@%=\(\)-]|(?:[,.;:'][^\s$]))*)* # path
-                          (?:\?[\w\+@%&=.;:-]+)?     # query string
-                          (?:\#[\w\-]*)?           # trailing anchor
-                        )
-                        ([[:punct:]]|<|$|)       # trailing text
-                       }x unless const_defined?(:AUTO_LINK_RE)
+            ( https?:// | www\. )
+            [^\s<]+
+          }x
+
+        BRACKETS = { ']' => '[', ')' => '(', '}' => '{' }
 
         # Turns all urls into clickable links.  If a block is given, each url
         # is yielded and the result is used as the link text.
         def auto_link_urls(text, html_options = {})
-          extra_options = tag_options(html_options.stringify_keys) || ""
+          link_attributes = html_options.stringify_keys
           text.gsub(AUTO_LINK_RE) do
-            all, a, b, c, d = $&, $1, $2, $3, $4
-            if a =~ /<a\s/i # don't replace URL's that are already linked
-              all
+            href = $&
+            punctuation = []
+            left, right = $`, $'
+            # detect already linked URLs and URLs in the middle of a tag
+            if left =~ /<[^>]+$/ && right =~ /^[^>]*>/
+              # do not change string; URL is already linked
+              href
             else
-              text = b + c
-              text = yield(text) if block_given?
-              %(#{a}<a href="#{b=="www."?"http://www.":b}#{c}"#{extra_options}>#{text}</a>#{d})
+              if href =~ /(.*)&gt;$/
+                href = $1
+                punctuation = '&gt;'.split('').reverse
+              end
+
+              # don't include trailing punctuation character as part of the URL
+              while href.sub!(/(&quot;)|([^\w\/-])$/, '')
+                punctuation.push $&
+                if opening = BRACKETS[punctuation.last] and href.scan(opening).size > href.scan(punctuation.last).size
+                  href << punctuation.pop
+                  break
+                end
+              end
+
+              link_text = block_given?? yield(href) : href
+              href = 'http://' + href unless href =~ %r{^[a-z]+://}i
+
+              content_tag(:a, h(link_text), link_attributes.merge('href' => href)) + punctuation.reverse.join('')
             end
           end
         end
 
         # Turns all email addresses into clickable links.  If a block is given,
         # each email is yielded and the result is used as the link text.
-        def auto_link_email_addresses(text)
+        def auto_link_email_addresses(text, html_options = {})
           body = text.dup
-          text.gsub(/([\w\.!#\$%\-+.]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+)/) do
+          text.gsub(/([\w\.!#\$%\-+]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+)/) do
             text = $1
 
             if body.match(/<a\b[^>]*>(.*)(#{Regexp.escape(text)})(.*)<\/a>/)
               text
             else
               display_text = (block_given?) ? yield(text) : text
-              %{<a href="mailto:#{text}">#{display_text}</a>}
+              mail_to text, display_text, html_options
             end
           end
         end
