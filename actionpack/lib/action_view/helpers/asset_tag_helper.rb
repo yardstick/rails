@@ -584,16 +584,12 @@ module ActionView
                 source = prepend_asset_host(source)
                 source
               else
-                CacheGuard.synchronize do
-                  Cache[@cache_key] ||= begin
-                    source += ".#{extension}" if missing_extension?(source) || file_exists_with_extension?(source)
-                    source = "/#{directory}/#{source}" unless source[0] == ?/
-                    source = rewrite_asset_path(source)
-                    source = prepend_relative_url_root(source)                
-                    source = prepend_asset_host(source)
-                    source
-                  end
-                end
+                source += ".#{extension}" if missing_extension?(source) || file_exists_with_extension?(source)
+                source = "/#{directory}/#{source}" unless source[0] == ?/
+                source = rewrite_asset_path(source)
+                source = prepend_relative_url_root(source)                
+                source = prepend_asset_host(source)
+                source
               end
             end
             
