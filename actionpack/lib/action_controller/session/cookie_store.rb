@@ -157,8 +157,26 @@ class CGI::Session::CookieStore
     # CGI likes to make you hack.
     def write_cookie(options)
       cookie = CGI::Cookie.new(@cookie_options.merge(options))
-      @session.cgi.send :instance_variable_set, '@output_cookies', [cookie]
+      if write_cookie?(cookie)
+        @session.cgi.send :instance_variable_set, '@output_cookies', [cookie]
+      end
     end
+
+    def securely_write_cookie?(cookie)
+      !cookie.secure || @session.cgi.env_table['HTTP_X_FORWARDED_PROTO'].to_s.include?('https')
+    end
+
+  if Rails.test? || (Rails.development? && ENV['GH_SSL'].blank?)
+    def write_cookie?(cookie)
+      if ApplicationController.test_ssl_requirement
+        securely_write_cookie?(cookie)
+      else
+        true
+      end
+    end
+  else
+    alias write_cookie? securely_write_cookie?
+  end
 
     # Clear cookie value so subsequent new_session doesn't reload old data.
     def clear_old_cookie_value
