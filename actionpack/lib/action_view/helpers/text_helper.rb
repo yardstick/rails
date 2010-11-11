@@ -548,7 +548,7 @@ module ActionView
 
 
         AUTO_LINK_RE = %r{
-            (?: ([\w+.:-]+:)// | www\. )
+            (?: ([\w+.:-]+:)// | \bwww\. )
             [^\s<]+
           }x
 
