@@ -107,9 +107,9 @@ class ClassExtTest < Test::Unit::TestCase
   end
 end
 
-class ObjectTests < Test::Unit::TestCase
+class ObjectTests < ActiveSupport::TestCase
   def test_suppress_re_raises
-    assert_raises(LoadError) { suppress(ArgumentError) {raise LoadError} }
+    assert_raise(LoadError) { suppress(ArgumentError) {raise LoadError} }
   end
   def test_suppress_supresses
     suppress(ArgumentError) { raise ArgumentError }
@@ -171,11 +171,23 @@ class ObjectTests < Test::Unit::TestCase
 
   def test_metaclass
     string = "Hello"
-    string.metaclass.instance_eval do
+    string.singleton_class.instance_eval do
       define_method(:foo) { "bar" }
     end
     assert_equal "bar", string.foo
   end
+
+  def test_singleton_class
+    o = Object.new
+    assert_equal class << o; self end, o.singleton_class
+  end
+
+  def test_metaclass_deprecated
+    o = Object.new
+    assert_deprecated(/use singleton_class instead/) do
+      assert_equal o.singleton_class, o.metaclass
+    end
+   end
 end
 
 class ObjectInstanceVariableTest < Test::Unit::TestCase
@@ -245,5 +257,38 @@ class ObjectInstanceVariableTest < Test::Unit::TestCase
   def test_instance_exec_nested
     assert_equal %w(goodbye olleh bar), 'hello'.instance_exec('goodbye') { |arg|
       [arg] + instance_exec('bar') { |v| [reverse, v] } }
+  end
+end
+
+class ObjectTryTest < Test::Unit::TestCase
+  def setup
+    @string = "Hello"
+  end
+
+  def test_nonexisting_method
+    method = :undefined_method
+    assert !@string.respond_to?(method)
+    assert_raise(NoMethodError) { @string.try(method) }
+  end
+  
+  def test_valid_method
+    assert_equal 5, @string.try(:size)
+  end
+
+  def test_argument_forwarding
+    assert_equal 'Hey', @string.try(:sub, 'llo', 'y')
+  end
+
+  def test_block_forwarding
+    assert_equal 'Hey', @string.try(:sub, 'llo') { |match| 'y' }
+  end
+
+  def test_nil_to_type
+    assert_nil nil.try(:to_s)
+    assert_nil nil.try(:to_i)
+  end
+
+  def test_false_try
+    assert_equal 'false', false.try(:to_s)
   end
 end

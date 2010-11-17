@@ -1,24 +1,27 @@
-$:.unshift File.dirname(__FILE__) + "/../../activesupport/lib"
-$:.unshift File.dirname(__FILE__) + "/../../actionpack/lib"
-$:.unshift File.dirname(__FILE__) + "/../lib"
-$:.unshift File.dirname(__FILE__) + "/../builtin/rails_info"
+$:.unshift File.expand_path('../../../activesupport/lib', __FILE__)
+$:.unshift File.expand_path('../../../activerecord/lib', __FILE__)
+$:.unshift File.expand_path('../../../actionpack/lib', __FILE__)
+$:.unshift File.expand_path('../../../actionmailer/lib', __FILE__)
+$:.unshift File.expand_path('../../lib', __FILE__)
+$:.unshift File.expand_path('../../builtin/rails_info', __FILE__)
 
-require 'test/unit'
 require 'stringio'
-require 'active_support'
+require 'rubygems'
+require 'test/unit'
 
-# Wrap tests that use Mocha and skip if unavailable.
-def uses_mocha(test_name)
-  require 'rubygems'
-  gem 'mocha', '>= 0.5.5'
-  require 'mocha'
-  yield
-rescue LoadError
-  $stderr.puts "Skipping #{test_name} tests. `gem install mocha` and try again."
-end
+require 'active_support'
+require 'active_support/test_case'
 
 if defined?(RAILS_ROOT)
   RAILS_ROOT.replace File.dirname(__FILE__)
 else
   RAILS_ROOT = File.dirname(__FILE__)
+end
+
+def uses_gem(gem_name, test_name, version = '> 0')
+  gem gem_name.to_s, version
+  require gem_name.to_s
+  yield
+rescue LoadError
+  $stderr.puts "Skipping #{test_name} tests. `gem install #{gem_name}` and try again."
 end

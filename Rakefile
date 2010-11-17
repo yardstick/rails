@@ -1,10 +1,9 @@
 require 'rake'
 require 'rake/rdoctask'
-require 'rake/contrib/sshpublisher'
 
 env = %(PKG_BUILD="#{ENV['PKG_BUILD']}") if ENV['PKG_BUILD']
 
-PROJECTS = %w(activesupport actionpack actionmailer activeresource activerecord railties)
+PROJECTS = %w(activesupport railties actionpack actionmailer activeresource activerecord)
 
 Dir["#{File.dirname(__FILE__)}/*/lib/*/version.rb"].each do |version_path|
   require version_path
@@ -13,7 +12,7 @@ end
 desc 'Run all tests by default'
 task :default => :test
 
-%w(test rdoc pgem package release).each do |task_name|
+%w(test rdoc pgem package release gem).each do |task_name|
   desc "Run #{task_name} task for all projects"
   task task_name do
     PROJECTS.each do |project|
@@ -27,10 +26,12 @@ desc "Generate documentation for the Rails framework"
 Rake::RDocTask.new do |rdoc|
   rdoc.rdoc_dir = 'doc/rdoc'
   rdoc.title    = "Ruby on Rails Documentation"
+  rdoc.main     = "railties/README"
 
   rdoc.options << '--line-numbers' << '--inline-source'
   rdoc.options << '-A cattr_accessor=object'
   rdoc.options << '--charset' << 'utf-8'
+  rdoc.options << '--main' << 'railties/README'
 
   rdoc.template = ENV['template'] ? "#{ENV['template']}.rb" : './doc/template/horo'
 
@@ -74,6 +75,7 @@ end
 
 desc "Publish API docs for Rails as a whole and for each component"
 task :pdoc => :rdoc do
+  require 'rake/contrib/sshpublisher'
   Rake::SshDirPublisher.new("wrath.rubyonrails.org", "public_html/api", "doc/rdoc").upload
   PROJECTS.each do |project|
     system %(cd #{project} && #{env} #{$0} pdoc)

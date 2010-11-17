@@ -196,7 +196,22 @@ module ActiveSupport #:nodoc:
       #   'Café périferôl'.mb_chars.index('ô') #=> 12
       #   'Café périferôl'.mb_chars.index(/\w/u) #=> 0
       def index(needle, offset=0)
-        index = @wrapped_string.index(needle, offset)
+        wrapped_offset = self.first(offset).wrapped_string.length
+        index = @wrapped_string.index(needle, wrapped_offset)
+        index ? (self.class.u_unpack(@wrapped_string.slice(0...index)).size) : nil
+      end
+
+      # Returns the position _needle_ in the string, counting in
+      # codepoints, searching backward from _offset_ or the end of the
+      # string. Returns +nil+ if _needle_ isn't found.
+      #
+      # Example:
+      #   'Café périferôl'.mb_chars.rindex('é') #=> 6
+      #   'Café périferôl'.mb_chars.rindex(/\w/u) #=> 13
+      def rindex(needle, offset=nil)
+        offset ||= length
+        wrapped_offset = self.first(offset).wrapped_string.length
+        index = @wrapped_string.rindex(needle, wrapped_offset)
         index ? (self.class.u_unpack(@wrapped_string.slice(0...index)).size) : nil
       end
 
@@ -305,7 +320,7 @@ module ActiveSupport #:nodoc:
       # Example:
       #   'Café'.mb_chars.reverse.to_s #=> 'éfaC'
       def reverse
-        chars(self.class.u_unpack(@wrapped_string).reverse.pack('U*'))
+        chars(self.class.g_unpack(@wrapped_string).reverse.flatten.pack('U*'))
       end
 
       # Implements Unicode-aware slice with codepoints. Slicing on one point returns the codepoints for that
@@ -334,6 +349,26 @@ module ActiveSupport #:nodoc:
         result.nil? ? nil : chars(result)
       end
       alias_method :[], :slice
+
+      # Like <tt>String#slice!</tt>, except instead of byte offsets you specify character offsets.
+      #
+      # Example:
+      #   s = 'こんにちは'
+      #   s.mb_chars.slice!(2..3).to_s #=> "にち"
+      #   s #=> "こんは"
+      def slice!(*args)
+        slice = self[*args]
+        self[*args] = ''
+        slice
+      end
+
+      # Returns the codepoint of the first character in the string.
+      #
+      # Example:
+      #   'こんにちは'.mb_chars.ord #=> 12371
+      def ord
+        self.class.u_unpack(@wrapped_string)[0]
+      end
 
       # Convert characters in the string to uppercase.
       #
@@ -415,7 +450,7 @@ module ActiveSupport #:nodoc:
         chars(self.class.tidy_bytes(@wrapped_string))
       end
 
-      %w(lstrip rstrip strip reverse upcase downcase slice tidy_bytes capitalize).each do |method|
+      %w(lstrip rstrip strip reverse upcase downcase tidy_bytes capitalize).each do |method|
         define_method("#{method}!") do |*args|
           unless args.nil?
             @wrapped_string = send(method, *args).to_s
