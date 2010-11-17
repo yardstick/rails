@@ -470,12 +470,6 @@ module ActionView
         email_address_obfuscated.gsub!(/@/, html_options.delete("replace_at")) if html_options.has_key?("replace_at")
         email_address_obfuscated.gsub!(/\./, html_options.delete("replace_dot")) if html_options.has_key?("replace_dot")
 
-        html = content_tag("a", name || email_address_obfuscated, html_options.merge({ "href" => "mailto:"+email_address+extras }))
-        html = escape_javascript(html)
-
-        "document.write('#{html}');".each_byte do |c|
-
-
         if encode == "javascript"
           # closes XSS hole
           html = content_tag("a", name || email_address_obfuscated.html_safe, html_options.merge({ "href" => "mailto:"+email_address+extras }))
