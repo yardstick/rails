@@ -580,10 +580,16 @@ module ActionView
                 end
               end
 
+              suffix = punctuation.reverse.join('')
+              if href =~ /&gt$/
+                href = href.chomp('&gt')
+                suffix = '&gt' + suffix
+              end
+
               link_text = block_given?? yield(href) : href
               href = 'http://' + href unless scheme
 
-              content_tag(:a, h(link_text), link_attributes.merge('href' => href)) + punctuation.reverse.join('')
+              content_tag(:a, h(link_text), link_attributes.merge('href' => href)) + suffix
             end
           end
         end
