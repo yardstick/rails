@@ -88,6 +88,7 @@ namespace :db do
 
   desc 'Drops the database for the current RAILS_ENV'
   task :drop => :environment do
+    fail "refusing to drop DB in production environment" if RAILS_ENV == 'production'
     config = ActiveRecord::Base.configurations[RAILS_ENV || 'development']
     begin
       drop_database(config)
@@ -249,6 +250,7 @@ namespace :db do
 
     desc "Load a schema.rb file into the database"
     task :load => :environment do
+      fail "refusing to load schema in production environment" if RAILS_ENV == 'production'
       file = ENV['SCHEMA'] || "#{RAILS_ROOT}/db/schema.rb"
       load(file)
     end
