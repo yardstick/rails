@@ -1014,6 +1014,12 @@ class RenderTest < ActionController::TestCase
     assert_equal "application/xml", @response.content_type
   end
 
+  def test_render_xml_as_string_template
+    get :render_xml_hello_as_string_template
+    assert_equal "<html>\n  <p>Hello David</p>\n<p>This is grand!</p>\n</html>\n", @response.body
+    assert_equal "application/xml", @response.content_type
+  end
+
   def test_render_xml_with_default
     get :greeting
     assert_equal "<p>This is grand!</p>\n", @response.body
@@ -1605,7 +1611,6 @@ class ExpiresInRenderTest < ActionController::TestCase
     assert_equal "max-age=60, public, max-stale=18000", @response.headers["Cache-Control"]
   end
 end
-
 
 class EtagRenderTest < ActionController::TestCase
   tests TestController

@@ -252,12 +252,6 @@ ActiveRecord::Schema.define do
     t.string :extra_data
   end
 
-  create_table :member_details, :force => true do |t|
-    t.integer :member_id
-    t.integer :organization_id
-    t.string :extra_data
-  end
-
   create_table :memberships, :force => true do |t|
     t.datetime :joined_on
     t.integer :club_id, :member_id

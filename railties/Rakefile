@@ -201,8 +201,6 @@ task :copy_configs do
 
   cp "configs/seeds.rb", "#{PKG_DESTINATION}/db/seeds.rb"
 
-  cp "configs/locales/en.yml", "#{PKG_DESTINATION}/config/locales/en.yml"
-
   cp "environments/boot.rb",        "#{PKG_DESTINATION}/config/boot.rb"
   File.open("#{PKG_DESTINATION}/config/environment.rb", 'w') {|f| f.write ERB.new(IO.read("environments/environment.rb"), nil, '-').result(binding)}
   cp "environments/production.rb",  "#{PKG_DESTINATION}/config/environments/production.rb"

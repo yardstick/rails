@@ -411,24 +411,6 @@ class InitializerViewPathsTest  < Test::Unit::TestCase
     ActionController::Base.stubs(:view_paths).returns(stub)
     ActionMailer::Base.stubs(:view_paths).returns(stub)
   end
-end
-
-uses_mocha 'i18n settings' do
-  class InitializerSetupI18nTests < Test::Unit::TestCase
-    def test_no_config_locales_dir_present_should_return_empty_load_path
-      File.stubs(:exist?).returns(false)
-      assert_equal [], Rails::Configuration.new.i18n.load_path
-    end
-
-    def test_config_locales_dir_present_should_be_added_to_load_path
-      File.stubs(:exist?).returns(true)
-      Dir.stubs(:[]).returns([ "my/test/locale.yml" ])
-      assert_equal [ "my/test/locale.yml" ], Rails::Configuration.new.i18n.load_path
-    end
-    
-    def test_config_defaults_should_be_added_with_config_settings
-      File.stubs(:exist?).returns(true)
-      Dir.stubs(:[]).returns([ "my/test/locale.yml" ])
 
   def test_load_view_paths_doesnt_perform_anything_when_action_view_not_in_frameworks
     @config.frameworks -= [:action_view]

@@ -131,6 +131,9 @@
 
 * Make I18n::Backend::Simple reload its translations in development mode [David Heinemeier Hansson/Sven Fuchs]
 
+
+*2.2.0 [RC1] (October 24th, 2008)*
+
 * TimeWithZone#freeze: preload instance variables so that we can actually freeze [Geoff Buesing]
 
 * Fix Brasilia timezone #1180 [Marcus Derencius, Kane]
