@@ -1,9 +1,38 @@
-require 'rubygems'
-require 'test/unit'
+# Pathname has a warning, so require it first while silencing
+# warnings to shut it up.
+#
+# Also, in 1.9, Bundler creates warnings due to overriding
+# Rubygems methods
+begin
+  old, $VERBOSE = $VERBOSE, nil
+  require 'pathname'
+  require File.expand_path('../../../load_paths', __FILE__)
+ensure
+  $VERBOSE = old
+end
 
-$:.unshift File.expand_path('../../lib', __FILE__)
-$:.unshift File.expand_path('../../../activesupport/lib', __FILE__)
-$:.unshift File.expand_path('../../../actionpack/lib', __FILE__)
+require 'active_support/core_ext/kernel/reporting'
+
+require 'active_support/core_ext/string/encoding'
+if "ruby".encoding_aware?
+  # These are the normal settings that will be set up by Railties
+  # TODO: Have these tests support other combinations of these values
+  silence_warnings do
+    Encoding.default_internal = "UTF-8"
+    Encoding.default_external = "UTF-8"
+  end
+end
+
+silence_warnings do
+  # These external dependencies have warnings :/
+  require 'text/format'
+  require 'mail'
+end
+
+lib = File.expand_path("#{File.dirname(__FILE__)}/../lib")
+$:.unshift(lib) unless $:.include?('lib') || $:.include?(lib)
+
+require 'test/unit'
 require 'action_mailer'
 require 'action_mailer/test_case'
 
@@ -14,11 +43,8 @@ ActiveSupport::Deprecation.debug = true
 ActionView::Template.register_template_handler :haml, lambda { |template| "Look its HAML!".inspect }
 ActionView::Template.register_template_handler :bak, lambda { |template| "Lame backup".inspect }
 
-$:.unshift "#{File.dirname(__FILE__)}/fixtures/helpers"
-
-ActionView::Base.cache_template_loading = true
-FIXTURE_LOAD_PATH = File.expand_path(File.join(File.dirname(__FILE__), 'fixtures'))
-ActionMailer::Base.template_root = FIXTURE_LOAD_PATH
+FIXTURE_LOAD_PATH = File.expand_path('fixtures', File.dirname(__FILE__))
+ActionMailer::Base.view_paths = FIXTURE_LOAD_PATH
 
 class MockSMTP
   def self.deliveries
@@ -44,17 +70,9 @@ class Net::SMTP
   end
 end
 
-def uses_gem(gem_name, test_name, version = '> 0')
-  gem gem_name.to_s, version
-  require gem_name.to_s
-  yield
-rescue LoadError
-  $stderr.puts "Skipping #{test_name} tests. `gem install #{gem_name}` and try again."
-end
-
-def set_delivery_method(delivery_method)
+def set_delivery_method(method)
   @old_delivery_method = ActionMailer::Base.delivery_method
-  ActionMailer::Base.delivery_method = delivery_method
+  ActionMailer::Base.delivery_method = method
 end
 
 def restore_delivery_method

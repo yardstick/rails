@@ -1,4 +1,5 @@
 require 'abstract_unit'
+require 'logger'
 
 class CaptureController < ActionController::Base
   def self.controller_name; "test"; end
@@ -27,6 +28,7 @@ class CaptureTest < ActionController::TestCase
   tests CaptureController
 
   def setup
+    super
     # enable a logger so that (e.g.) the benchmarking stuff runs, so we can get
     # a more accurate simulation of what happens in "real life".
     @controller.logger = Logger.new(nil)
@@ -36,7 +38,7 @@ class CaptureTest < ActionController::TestCase
 
   def test_simple_capture
     get :capturing
-    assert_equal "<p>Dreamy days</p>", @response.body.strip
+    assert_equal "Dreamy days", @response.body.strip
   end
 
   def test_content_for
@@ -59,8 +61,13 @@ class CaptureTest < ActionController::TestCase
     assert_equal expected_content_for_output, @response.body
   end
 
+  def test_proper_block_detection
+    @todo = "some todo"
+    get :proper_block_detection
+  end
+
   private
     def expected_content_for_output
-      "<title>Putting stuff in the title!</title>\n\nGreat stuff!"
+      "<title>Putting stuff in the title!</title>\nGreat stuff!"
     end
 end

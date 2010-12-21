@@ -1,3 +1,4 @@
+require 'active_support/core_ext/object/blank'
 require 'date'
 require 'set'
 require 'bigdecimal'
@@ -22,7 +23,9 @@ module ActiveRecord
       #
       # +name+ is the column's name, such as <tt>supplier_id</tt> in <tt>supplier_id int(11)</tt>.
       # +default+ is the type-casted default value, such as +new+ in <tt>sales_stage varchar(20) default 'new'</tt>.
-      # +sql_type+ is only used to extract the column's length, if necessary. For example +60+ in <tt>company_name varchar(60)</tt>.
+      # +sql_type+ is used to extract the column's length, if necessary. For example +60+ in
+      # <tt>company_name varchar(60)</tt>.
+      # It will be mapped to one of the standard Rails SQL types in the <tt>type</tt> attribute.
       # +null+ determines if this column allows +NULL+ values.
       def initialize(name, default, sql_type = nil, null = true)
         @name, @sql_type, @null = name, sql_type, null
@@ -319,16 +322,19 @@ module ActiveRecord
       def method_missing(symbol, *args)
         if symbol.to_s == 'xml'
           xml_column_fallback(args)
+        else
+          super
         end
       end
 
       def xml_column_fallback(*args)
         case @base.adapter_name.downcase
-          when 'sqlite', 'mysql'
-            options = args.extract_options!
-            column(args[0], :text, options)
-          end
+        when 'sqlite', 'mysql'
+          options = args.extract_options!
+          column(args[0], :text, options)
         end
+      end
+
       # Appends a primary key definition to the table definition.
       # Can be called multiple times, but this is probably not a good idea.
       def primary_key(name)
@@ -354,7 +360,8 @@ module ActiveRecord
       #
       # Available options are (none of these exists by default):
       # * <tt>:limit</tt> -
-      #   Requests a maximum column length. This is number of characters for <tt>:string</tt> and <tt>:text</tt> columns and number of bytes for :binary and :integer columns.
+      #   Requests a maximum column length. This is number of characters for <tt>:string</tt> and
+      #   <tt>:text</tt> columns and number of bytes for :binary and :integer columns.
       # * <tt>:default</tt> -
       #   The column's default value. Use nil for NULL.
       # * <tt>:null</tt> -
@@ -457,8 +464,8 @@ module ActiveRecord
       # TableDefinition#timestamps that'll add created_at and +updated_at+ as datetimes.
       #
       # TableDefinition#references will add an appropriately-named _id column, plus a corresponding _type
-      # column if the <tt>:polymorphic</tt> option is supplied. If <tt>:polymorphic</tt> is a hash of options, these will be
-      # used when creating the <tt>_type</tt> column. So what can be written like this:
+      # column if the <tt>:polymorphic</tt> option is supplied. If <tt>:polymorphic</tt> is a hash of
+      # options, these will be used when creating the <tt>_type</tt> column. So what can be written like this:
       #
       #   create_table :taggings do |t|
       #     t.integer :tag_id, :tagger_id, :taggable_id
@@ -489,7 +496,7 @@ module ActiveRecord
       end
 
       %w( string text integer float decimal datetime timestamp time date binary boolean ).each do |column_type|
-        class_eval <<-EOV
+        class_eval <<-EOV, __FILE__, __LINE__ + 1
           def #{column_type}(*args)                                               # def string(*args)
             options = args.extract_options!                                       #   options = args.extract_options!
             column_names = args                                                   #   column_names = args
@@ -521,7 +528,7 @@ module ActiveRecord
       # concatenated together. This string can then be prepended and appended to
       # to generate the final SQL to create the table.
       def to_sql
-        @columns.map(&:to_sql) * ', '
+        @columns.map { |c| c.to_sql } * ', '
       end
 
       private
@@ -530,7 +537,7 @@ module ActiveRecord
         end
     end
 
-    # Represents a SQL table in an abstract way for updating a table.
+    # Represents an SQL table in an abstract way for updating a table.
     # Also see TableDefinition and SchemaStatements#create_table
     #
     # Available transformations are:
@@ -577,6 +584,11 @@ module ActiveRecord
         @base.add_column(@table_name, column_name, type, options)
       end
 
+      # Checks to see if a column exists. See SchemaStatements#column_exists?
+      def column_exists?(column_name, type = nil, options = nil)
+        @base.column_exists?(@table_name, column_name, type, options)
+      end
+
       # Adds a new index to the table. +column_name+ can be a single Symbol, or
       # an Array of Symbols. See SchemaStatements#add_index
       #
@@ -589,6 +601,11 @@ module ActiveRecord
       #  t.index([:branch_id, :party_id], :unique => true, :name => 'by_branch_party')
       def index(column_name, options = {})
         @base.add_index(@table_name, column_name, options)
+      end
+
+      # Checks to see if an index exists. See SchemaStatements#index_exists?
+      def index_exists?(column_name, options = {})
+        @base.index_exists?(@table_name, column_name, options)
       end
 
       # Adds timestamps (created_at and updated_at) columns to the table. See SchemaStatements#add_timestamps
@@ -689,7 +706,7 @@ module ActiveRecord
       #  t.string(:goat)
       #  t.string(:goat, :sheep)
       %w( string text integer float decimal datetime timestamp time date binary boolean ).each do |column_type|
-        class_eval <<-EOV
+        class_eval <<-EOV, __FILE__, __LINE__ + 1
           def #{column_type}(*args)                                          # def string(*args)
             options = args.extract_options!                                  #   options = args.extract_options!
             column_names = args                                              #   column_names = args

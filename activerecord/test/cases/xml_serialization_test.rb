@@ -2,9 +2,9 @@ require "cases/helper"
 require 'models/contact'
 require 'models/post'
 require 'models/author'
-require 'models/tagging'
 require 'models/comment'
 require 'models/company_in_module'
+require 'models/toy'
 
 class XmlSerializationTest < ActiveRecord::TestCase
   def test_should_serialize_default_root
@@ -79,8 +79,28 @@ class DefaultXmlSerializationTest < ActiveRecord::TestCase
     assert_match %r{<awesome type=\"boolean\">false</awesome>}, @xml
   end
 
-  def test_should_serialize_yaml
-    assert_match %r{<preferences type=\"yaml\">--- \n:gem: ruby\n</preferences>}, @xml
+  def test_should_serialize_hash
+    assert_match %r{<preferences>\s*<gem>ruby</gem>\s*</preferences>}m, @xml
+  end
+end
+
+class DefaultXmlSerializationTimezoneTest < ActiveRecord::TestCase
+  def test_should_serialize_datetime_with_timezone
+    timezone, Time.zone = Time.zone, "Pacific Time (US & Canada)"
+
+    toy = Toy.create(:name => 'Mickey', :updated_at => Time.utc(2006, 8, 1))
+    assert_match %r{<updated-at type=\"datetime\">2006-07-31T17:00:00-07:00</updated-at>}, toy.to_xml
+  ensure
+    Time.zone = timezone
+  end
+
+  def test_should_serialize_datetime_with_timezone_reloaded
+    timezone, Time.zone = Time.zone, "Pacific Time (US & Canada)"
+
+    toy = Toy.create(:name => 'Minnie', :updated_at => Time.utc(2006, 8, 1)).reload
+    assert_match %r{<updated-at type=\"datetime\">2006-07-31T17:00:00-07:00</updated-at>}, toy.to_xml
+  ensure
+    Time.zone = timezone
   end
 end
 
@@ -130,30 +150,21 @@ class NilXmlSerializationTest < ActiveRecord::TestCase
   end
 end
 
-class DatabaseConnectedXmlModuleSerializationTest < ActiveRecord::TestCase
-
-  fixtures :projects, :developers, :developers_projects
-
-  def test_module
-    project = MyApplication::Business::Project.find :first
-    xml = project.to_xml
-    assert_match %r{<my-application-business-project>}, xml
-    assert_match %r{</my-application-business-project>}, xml
-  end
-
-  def test_module_with_include
-    project = MyApplication::Business::Project.find :first
-    xml = project.to_xml :include => :developers
-    assert_match %r{<developer type="MyApplication::Business::Developer">}, xml
-    assert_match %r{</developer>}, xml
-  end
-end
-
 class DatabaseConnectedXmlSerializationTest < ActiveRecord::TestCase
-  fixtures :authors, :posts
+  fixtures :authors, :posts, :projects
+
   # to_xml used to mess with the hash the user provided which
   # caused the builder to be reused.  This meant the document kept
   # getting appended to.
+
+  def test_modules
+    projects = MyApplication::Business::Project.all
+    xml = projects.to_xml
+    root = projects.first.class.to_s.underscore.pluralize.tr('/','_').dasherize
+    assert_match "<#{root} type=\"array\">", xml
+    assert_match "</#{root}>", xml
+  end
+
   def test_passing_hash_shouldnt_reuse_builder
     options = {:include=>:posts}
     david = authors(:david)
@@ -192,6 +203,12 @@ class DatabaseConnectedXmlSerializationTest < ActiveRecord::TestCase
     proc = Proc.new { |options| options[:builder].tag!('nationality', 'Danish') }
     xml = authors(:david).to_xml(:procs => [ proc ])
     assert_match %r{<nationality>Danish</nationality>}, xml
+  end
+
+  def test_dual_arity_procs_are_called_on_object
+    proc = Proc.new { |options, record| options[:builder].tag!('name-reverse', record.name.reverse) }
+    xml = authors(:david).to_xml(:procs => [ proc ])
+    assert_match %r{<name-reverse>divaD</name-reverse>}, xml
   end
 
   def test_top_level_procs_arent_applied_to_associations
@@ -235,6 +252,14 @@ class DatabaseConnectedXmlSerializationTest < ActiveRecord::TestCase
     assert types.include?('SpecialPost')
     assert types.include?('Post')
     assert types.include?('StiPost')
+  end
+
+  def test_should_produce_xml_for_methods_returning_array
+    xml = authors(:david).to_xml(:methods => :social)
+    array = Hash.from_xml(xml)['author']['social']
+    assert_equal 2, array.size
+    assert array.include? 'twitter'
+    assert array.include? 'github'
   end
 
 end

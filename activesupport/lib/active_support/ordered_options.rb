@@ -1,5 +1,7 @@
+require 'active_support/ordered_hash'
+
 module ActiveSupport #:nodoc:
-  class OrderedOptions < OrderedHash #:nodoc:
+  class OrderedOptions < OrderedHash
     def []=(key, value)
       super(key.to_sym, value)
     end
@@ -14,6 +16,12 @@ module ActiveSupport #:nodoc:
       else
         self[name]
       end
+    end
+  end
+
+  class InheritableOptions < OrderedOptions
+    def initialize(parent)
+      super() { |h,k| parent[k] }
     end
   end
 end

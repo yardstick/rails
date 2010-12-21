@@ -16,6 +16,9 @@ require 'models/treasure'
 require 'models/matey'
 require 'models/ship'
 require 'models/book'
+require 'models/admin'
+require 'models/admin/account'
+require 'models/admin/user'
 
 class FixturesTest < ActiveRecord::TestCase
   self.use_instantiated_fixtures = true
@@ -26,14 +29,14 @@ class FixturesTest < ActiveRecord::TestCase
   FIXTURES = %w( accounts binaries companies customers
                  developers developers_projects entrants
                  movies projects subscribers topics tasks )
-  MATCH_ATTRIBUTE_NAME = /[a-zA-Z][-_\w]*/
+  MATCH_ATTRIBUTE_NAME = /[a-zA-Z][-\w]*/
 
   def test_clean_fixtures
     FIXTURES.each do |name|
       fixtures = nil
       assert_nothing_raised { fixtures = create_fixtures(name) }
       assert_kind_of(Fixtures, fixtures)
-      fixtures.each { |name, fixture|
+      fixtures.each { |_name, fixture|
         fixture.each { |key, value|
           assert_match(MATCH_ATTRIBUTE_NAME, key)
         }
@@ -98,7 +101,7 @@ class FixturesTest < ActiveRecord::TestCase
       second_row = ActiveRecord::Base.connection.select_one("SELECT * FROM prefix_topics_suffix WHERE author_name = 'Mary'")
       assert_nil(second_row["author_email_address"])
 
-      # This checks for a caching problem which causes a bug in the fixtures 
+      # This checks for a caching problem which causes a bug in the fixtures
       # class-level configuration helper.
       assert_not_nil topics, "Fixture data inserted, but fixture objects not returned from create"
     ensure
@@ -148,6 +151,17 @@ class FixturesTest < ActiveRecord::TestCase
 
   def test_empty_yaml_fixture_with_a_comment_in_it
     assert_not_nil Fixtures.new( Account.connection, "companies", 'Company', FIXTURES_ROOT + "/naked/yml/companies")
+  end
+
+  def test_nonexistent_fixture_file
+    nonexistent_fixture_path = FIXTURES_ROOT + "/imnothere"
+
+    #sanity check to make sure that this file never exists
+    assert Dir[nonexistent_fixture_path+"*"].empty?
+
+    assert_raise(FixturesFileNotFound) do
+      Fixtures.new( Account.connection, "companies", 'Company', nonexistent_fixture_path)
+    end
   end
 
   def test_dirty_dirty_yaml_file
@@ -226,9 +240,9 @@ if Account.connection.respond_to?(:reset_pk_sequence!)
 
     def test_create_fixtures_resets_sequences_when_not_cached
       @instances.each do |instance|
-        max_id = create_fixtures(instance.class.table_name).inject(0) do |max_id, (name, fixture)|
+        max_id = create_fixtures(instance.class.table_name).inject(0) do |_max_id, (name, fixture)|
           fixture_id = fixture['id'].to_i
-          fixture_id > max_id ? fixture_id : max_id
+          fixture_id > _max_id ? fixture_id : _max_id
         end
 
         # Clone the last fixture to check that it gets the next greatest id.
@@ -244,14 +258,14 @@ class FixturesWithoutInstantiationTest < ActiveRecord::TestCase
   fixtures :topics, :developers, :accounts
 
   def test_without_complete_instantiation
-    assert_nil @first
-    assert_nil @topics
-    assert_nil @developers
-    assert_nil @accounts
+    assert !defined?(@first)
+    assert !defined?(@topics)
+    assert !defined?(@developers)
+    assert !defined?(@accounts)
   end
 
   def test_fixtures_from_root_yml_without_instantiation
-    assert_nil @unknown
+    assert !defined?(@unknown), "@unknown is not defined"
   end
 
   def test_visibility_of_accessor_method
@@ -284,7 +298,7 @@ class FixturesWithoutInstanceInstantiationTest < ActiveRecord::TestCase
   fixtures :topics, :developers, :accounts
 
   def test_without_instance_instantiation
-    assert_nil @first
+    assert !defined?(@first), "@first is not defined"
     assert_not_nil @topics
     assert_not_nil @developers
     assert_not_nil @accounts
@@ -368,7 +382,7 @@ end
 class CheckSetTableNameFixturesTest < ActiveRecord::TestCase
   set_fixture_class :funny_jokes => 'Joke'
   fixtures :funny_jokes
-  # Set to false to blow away fixtures cache and ensure our fixtures are loaded 
+  # Set to false to blow away fixtures cache and ensure our fixtures are loaded
   # and thus takes into account our set_fixture_class
   self.use_transactional_fixtures = false
 
@@ -380,7 +394,7 @@ end
 class FixtureNameIsNotTableNameFixturesTest < ActiveRecord::TestCase
   set_fixture_class :items => Book
   fixtures :items
-  # Set to false to blow away fixtures cache and ensure our fixtures are loaded 
+  # Set to false to blow away fixtures cache and ensure our fixtures are loaded
   # and thus takes into account our set_fixture_class
   self.use_transactional_fixtures = false
 
@@ -392,7 +406,7 @@ end
 class FixtureNameIsNotTableNameMultipleFixturesTest < ActiveRecord::TestCase
   set_fixture_class :items => Book, :funny_jokes => Joke
   fixtures :items, :funny_jokes
-  # Set to false to blow away fixtures cache and ensure our fixtures are loaded 
+  # Set to false to blow away fixtures cache and ensure our fixtures are loaded
   # and thus takes into account our set_fixture_class
   self.use_transactional_fixtures = false
 
@@ -408,7 +422,7 @@ end
 class CustomConnectionFixturesTest < ActiveRecord::TestCase
   set_fixture_class :courses => Course
   fixtures :courses
-  # Set to false to blow away fixtures cache and ensure our fixtures are loaded 
+  # Set to false to blow away fixtures cache and ensure our fixtures are loaded
   # and thus takes into account our set_fixture_class
   self.use_transactional_fixtures = false
 
@@ -420,7 +434,7 @@ end
 
 class InvalidTableNameFixturesTest < ActiveRecord::TestCase
   fixtures :funny_jokes
-  # Set to false to blow away fixtures cache and ensure our fixtures are loaded 
+  # Set to false to blow away fixtures cache and ensure our fixtures are loaded
   # and thus takes into account our lack of set_fixture_class
   self.use_transactional_fixtures = false
 
@@ -434,7 +448,7 @@ end
 class CheckEscapedYamlFixturesTest < ActiveRecord::TestCase
   set_fixture_class :funny_jokes => 'Joke'
   fixtures :funny_jokes
-  # Set to false to blow away fixtures cache and ensure our fixtures are loaded 
+  # Set to false to blow away fixtures cache and ensure our fixtures are loaded
   # and thus takes into account our set_fixture_class
   self.use_transactional_fixtures = false
 
@@ -512,7 +526,7 @@ class FasterFixturesTest < ActiveRecord::TestCase
 end
 
 class FoxyFixturesTest < ActiveRecord::TestCase
-  fixtures :parrots, :parrots_pirates, :pirates, :treasures, :mateys, :ships, :computers, :developers
+  fixtures :parrots, :parrots_pirates, :pirates, :treasures, :mateys, :ships, :computers, :developers, :"admin/accounts", :"admin/users"
 
   def test_identifies_strings
     assert_equal(Fixtures.identify("foo"), Fixtures.identify("foo"))
@@ -633,6 +647,11 @@ class FoxyFixturesTest < ActiveRecord::TestCase
   def test_supports_sti
     assert_kind_of DeadParrot, parrots(:polly)
     assert_equal pirates(:blackbeard), parrots(:polly).killer
+  end
+
+  def test_namespaced_models
+    assert admin_accounts(:signals37).users.include?(admin_users(:david))
+    assert_equal 2, admin_accounts(:signals37).users.size
   end
 end
 

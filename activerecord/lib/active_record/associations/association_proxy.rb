@@ -1,5 +1,9 @@
+require 'active_support/core_ext/array/wrap'
+
 module ActiveRecord
   module Associations
+    # = Active Record Associations
+    #
     # This is the root class of all association proxies:
     #
     #   AssociationProxy
@@ -49,12 +53,13 @@ module ActiveRecord
       alias_method :proxy_respond_to?, :respond_to?
       alias_method :proxy_extend, :extend
       delegate :to_param, :to => :proxy_target
-      instance_methods.each { |m| undef_method m unless m =~ /(^__|^nil\?$|^send$|proxy_|^object_id$)/ }
+      instance_methods.each { |m| undef_method m unless m.to_s =~ /^(?:nil\?|send|object_id|to_a)$|^__|^respond_to_missing|proxy_/ }
 
       def initialize(owner, reflection)
         @owner, @reflection = owner, reflection
+        @updated = false
         reflection.check_validity!
-        Array(reflection.options[:extend]).each { |ext| proxy_extend(ext) }
+        Array.wrap(reflection.options[:extend]).each { |ext| proxy_extend(ext) }
         reset
       end
 
@@ -156,21 +161,12 @@ module ActiveRecord
           @reflection.options[:dependent]
         end
 
-        # Returns a string with the IDs of +records+ joined with a comma, quoted
-        # if needed. The result is ready to be inserted into a SQL IN clause.
-        #
-        #   quoted_record_ids(records) # => "23,56,58,67"
-        #
-        def quoted_record_ids(records)
-          records.map { |record| record.quoted_id }.join(',')
-        end
-
         def interpolate_sql(sql, record = nil)
           @owner.send(:interpolate_sql, sql, record)
         end
 
         # Forwards the call to the reflection class.
-        def sanitize_sql(sql, table_name = @reflection.klass.quoted_table_name)
+        def sanitize_sql(sql, table_name = @reflection.klass.table_name)
           @reflection.klass.send(:sanitize_sql, sql, table_name)
         end
 
@@ -209,12 +205,17 @@ module ActiveRecord
 
       private
         # Forwards any missing method call to the \target.
-        def method_missing(method, *args, &block)
+        def method_missing(method, *args)
           if load_target
-            if @target.respond_to?(method)
-              method == :to_a ? Array(@target) : @target.send(method, *args, &block)
+            unless @target.respond_to?(method)
+              message = "undefined method `#{method.to_s}' for \"#{@target}\":#{@target.class.to_s}"
+              raise NoMethodError, message
+            end
+
+            if block_given?
+              @target.send(method, *args)  { |*block_args| yield(*block_args) }
             else
-              super
+              @target.send(method, *args)
             end
           end
         end
@@ -260,10 +261,16 @@ module ActiveRecord
           end
         end
 
-        # Array#flatten has problems with recursive arrays. Going one level
-        # deeper solves the majority of the problems.
-        def flatten_deeper(array)
-          array.collect { |element| (element.respond_to?(:flatten) && !element.is_a?(Hash)) ? element.flatten : element }.flatten
+        if RUBY_VERSION < '1.9.2'
+          # Array#flatten has problems with recursive arrays before Ruby 1.9.2.
+          # Going one level deeper solves the majority of the problems.
+          def flatten_deeper(array)
+            array.collect { |element| (element.respond_to?(:flatten) && !element.is_a?(Hash)) ? element.flatten : element }.flatten
+          end
+        else
+          def flatten_deeper(array)
+            array.flatten
+          end
         end
 
         # Returns the ID of the owner, quoted if needed.

@@ -1,3 +1,5 @@
+require 'active_support/core_ext/array/wrap'
+
 module ActiveRecord
   module ConnectionAdapters # :nodoc:
     module SchemaStatements
@@ -22,9 +24,52 @@ module ActiveRecord
       # Returns an array of indexes for the given table.
       # def indexes(table_name, name = nil) end
 
+      # Checks to see if an index exists on a table for a given index definition
+      #
+      # === Examples
+      #  # Check an index exists
+      #  index_exists?(:suppliers, :company_id)
+      #
+      #  # Check an index on multiple columns exists
+      #  index_exists?(:suppliers, [:company_id, :company_type])
+      #
+      #  # Check a unique index exists
+      #  index_exists?(:suppliers, :company_id, :unique => true)
+      #
+      #  # Check an index with a custom name exists
+      #  index_exists?(:suppliers, :company_id, :name => "idx_company_id"
+      def index_exists?(table_name, column_name, options = {})
+        column_names = Array.wrap(column_name)
+        index_name = options.key?(:name) ? options[:name].to_s : index_name(table_name, :column => column_names)
+        if options[:unique]
+          indexes(table_name).any?{ |i| i.unique && i.name == index_name }
+        else
+          indexes(table_name).any?{ |i| i.name == index_name }
+        end
+      end
+
       # Returns an array of Column objects for the table specified by +table_name+.
       # See the concrete implementation for details on the expected parameter values.
       def columns(table_name, name = nil) end
+
+      # Checks to see if a column exists in a given table.
+      #
+      # === Examples
+      #  # Check a column exists
+      #  column_exists?(:suppliers, :name)
+      #
+      #  # Check a column exists of a particular type
+      #  column_exists?(:suppliers, :name, :string)
+      #
+      #  # Check a column exists with a specific definition
+      #  column_exists?(:suppliers, :name, :string, :limit => 100)
+      def column_exists?(table_name, column_name, type = nil, options = {})
+        columns(table_name).any?{ |c| c.name == column_name.to_s &&
+                                      (!type                 || c.type == type) &&
+                                      (!options[:limit]      || c.limit == options[:limit]) &&
+                                      (!options[:precision]  || c.precision == options[:precision]) &&
+                                      (!options[:scale]      || c.scale == options[:scale]) }
+      end
 
       # Creates a new table with the name +table_name+. +table_name+ may either
       # be a String or a Symbol.
@@ -36,8 +81,16 @@ module ActiveRecord
       #  # create_table() passes a TableDefinition object to the block.
       #  # This form will not only create the table, but also columns for the
       #  # table.
+      #
       #  create_table(:suppliers) do |t|
       #    t.column :name, :string, :limit => 60
+      #    # Other fields here
+      #  end
+      #
+      # === Block form, with shorthand
+      #  # You can also use the column types as method calls, rather than calling the column method.
+      #  create_table(:suppliers) do |t|
+      #    t.string :name, :limit => 60
       #    # Other fields here
       #  end
       #
@@ -50,10 +103,15 @@ module ActiveRecord
       # The +options+ hash can include the following keys:
       # [<tt>:id</tt>]
       #   Whether to automatically add a primary key column. Defaults to true.
-      #   Join tables for +has_and_belongs_to_many+ should set <tt>:id => false</tt>.
+      #   Join tables for +has_and_belongs_to_many+ should set it to false.
       # [<tt>:primary_key</tt>]
       #   The name of the primary key, if one is to be added automatically.
-      #   Defaults to +id+.
+      #   Defaults to +id+. If <tt>:id</tt> is false this option is ignored.
+      #
+      #   Also note that this just sets the primary key in the table. You additionally
+      #   need to configure the primary key in the model via the +set_primary_key+ macro.
+      #   Models do NOT auto-detect the primary key from their table definition.
+      #
       # [<tt>:options</tt>]
       #   Any extra options you want appended to the table definition.
       # [<tt>:temporary</tt>]
@@ -269,23 +327,21 @@ module ActiveRecord
       #
       # Note: SQLite doesn't support index length
       def add_index(table_name, column_name, options = {})
-        column_names = Array(column_name)
+        column_names = Array.wrap(column_name)
         index_name   = index_name(table_name, :column => column_names)
 
         if Hash === options # legacy support, since this param was a string
           index_type = options[:unique] ? "UNIQUE" : ""
-          index_name = options[:name].to_s if options[:name]
+          index_name = options[:name].to_s if options.key?(:name)
         else
           index_type = options
         end
 
         if index_name.length > index_name_length
-          @logger.warn("Index name '#{index_name}' on table '#{table_name}' is too long; the limit is #{index_name_length} characters. Skipping.")
-          return
+          raise ArgumentError, "Index name '#{index_name}' on table '#{table_name}' is too long; the limit is #{index_name_length} characters"
         end
-        if index_exists?(table_name, index_name, false)
-          @logger.warn("Index name '#{index_name}' on table '#{table_name}' already exists. Skipping.")
-          return
+        if index_name_exists?(table_name, index_name, false)
+          raise ArgumentError, "Index name '#{index_name}' on table '#{table_name}' already exists"
         end
         quoted_column_names = quoted_columns_for_index(column_names, options).join(", ")
 
@@ -304,15 +360,14 @@ module ActiveRecord
       #   remove_index :accounts, :name => :by_branch_party
       def remove_index(table_name, options = {})
         index_name = index_name(table_name, options)
-        unless index_exists?(table_name, index_name, true)
-          @logger.warn("Index name '#{index_name}' on table '#{table_name}' does not exist. Skipping.")
-          return
+        unless index_name_exists?(table_name, index_name, true)
+          raise ArgumentError, "Index name '#{index_name}' on table '#{table_name}' does not exist"
         end
         remove_index!(table_name, index_name)
       end
 
       def remove_index!(table_name, index_name) #:nodoc:
-        execute "DROP INDEX #{quote_column_name(index_name)} ON #{table_name}"
+        execute "DROP INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)}"
       end
 
       # Rename an index.
@@ -330,7 +385,7 @@ module ActiveRecord
       def index_name(table_name, options) #:nodoc:
         if Hash === options # legacy support
           if options[:column]
-            "index_#{table_name}_on_#{Array(options[:column]) * '_and_'}"
+            "index_#{table_name}_on_#{Array.wrap(options[:column]) * '_and_'}"
           elsif options[:name]
             options[:name]
           else
@@ -341,11 +396,11 @@ module ActiveRecord
         end
       end
 
-      # Verify the existence of an index.
+      # Verify the existence of an index with a given name.
       #
       # The default argument is returned if the underlying implementation does not define the indexes method,
       # as there's no way to determine the correct answer in that case.
-      def index_exists?(table_name, index_name, default)
+      def index_name_exists?(table_name, index_name, default)
         return default unless respond_to?(:indexes)
         index_name = index_name.to_s
         indexes(table_name).detect { |i| i.name == index_name }
@@ -367,7 +422,7 @@ module ActiveRecord
       def initialize_schema_migrations_table
         sm_table = ActiveRecord::Migrator.schema_migrations_table_name
 
-        unless tables.detect { |t| t == sm_table }
+        unless table_exists?(sm_table)
           create_table(sm_table, :id => false) do |schema_migrations_table|
             schema_migrations_table.column :version, :string, :null => false
           end
@@ -378,7 +433,7 @@ module ActiveRecord
           # migrated up to that point:
           si_table = Base.table_name_prefix + 'schema_info' + Base.table_name_suffix
 
-          if tables.detect { |t| t == si_table }
+          if table_exists?(si_table)
 
             old_version = select_value("SELECT version FROM #{quote_table_name(si_table)}").to_i
             assume_migrated_upto_version(old_version)
@@ -391,7 +446,7 @@ module ActiveRecord
         version = version.to_i
         sm_table = quote_table_name(ActiveRecord::Migrator.schema_migrations_table_name)
 
-        migrated = select_values("SELECT version FROM #{sm_table}").map(&:to_i)
+        migrated = select_values("SELECT version FROM #{sm_table}").map { |v| v.to_i }
         versions = Dir["#{migrations_path}/[0-9]*_*.rb"].map do |filename|
           filename.split('/').last.split('_').first.to_i
         end
@@ -452,12 +507,6 @@ module ActiveRecord
       #   distinct("posts.id", "posts.created_at desc")
       def distinct(columns, order_by)
         "DISTINCT #{columns}"
-      end
-
-      # ORDER BY clause for the passed order option.
-      # PostgreSQL overrides this due to its stricter standards compliance.
-      def add_order_by_for_association_limiting!(sql, options)
-        sql << " ORDER BY #{options[:order]}"
       end
 
       # Adds timestamps (created_at and updated_at) columns to the named table.

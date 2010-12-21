@@ -3,7 +3,9 @@ require 'yaml'
 require 'csv'
 require 'zlib'
 require 'active_support/dependencies'
-require 'active_support/test_case'
+require 'active_support/core_ext/array/wrap'
+require 'active_support/core_ext/object/blank'
+require 'active_support/core_ext/logger'
 
 if RUBY_VERSION < '1.9'
   module YAML #:nodoc:
@@ -22,6 +24,8 @@ else
   end
 end
 
+class FixturesFileNotFound < StandardError; end
+
 # Fixtures are a way of organizing data that you want to test against; in short, sample data.
 #
 # = Fixture formats
@@ -37,9 +41,10 @@ end
 # This type of fixture is in YAML format and the preferred default. YAML is a file format which describes data structures
 # in a non-verbose, human-readable format. It ships with Ruby 1.8.1+.
 #
-# Unlike single-file fixtures, YAML fixtures are stored in a single file per model, which are placed in the directory appointed
-# by <tt>ActiveSupport::TestCase.fixture_path=(path)</tt> (this is automatically configured for Rails, so you can just
-# put your files in <tt><your-rails-app>/test/fixtures/</tt>). The fixture file ends with the <tt>.yml</tt> file extension (Rails example:
+# Unlike single-file fixtures, YAML fixtures are stored in a single file per model, which are placed
+# in the directory appointed by <tt>ActiveSupport::TestCase.fixture_path=(path)</tt> (this is
+# automatically configured for Rails, so you can just put your files in <tt><your-rails-app>/test/fixtures/</tt>).
+# The fixture file ends with the <tt>.yml</tt> file extension (Rails example:
 # <tt><your-rails-app>/test/fixtures/web_sites.yml</tt>). The format of a YAML fixture file looks like this:
 #
 #   rubyonrails:
@@ -56,7 +61,8 @@ end
 # indented list of key/value pairs in the "key: value" format.  Records are separated by a blank line for your viewing
 # pleasure.
 #
-# Note that YAML fixtures are unordered. If you want ordered fixtures, use the omap YAML type.  See http://yaml.org/type/omap.html
+# Note that YAML fixtures are unordered. If you want ordered fixtures, use the omap YAML type.
+# See http://yaml.org/type/omap.html
 # for the specification.  You will need ordered fixtures when you have foreign key constraints on keys in the same table.
 # This is commonly needed for tree structures.  Example:
 #
@@ -77,7 +83,8 @@ end
 # (Rails example: <tt><your-rails-app>/test/fixtures/web_sites.csv</tt>).
 #
 # The format of this type of fixture file is much more compact than the others, but also a little harder to read by us
-# humans.  The first line of the CSV file is a comma-separated list of field names.  The rest of the file is then comprised
+# humans.  The first line of the CSV file is a comma-separated list of field names.  The rest of the
+# file is then comprised
 # of the actual data (1 per line).  Here's an example:
 #
 #   id, name, url
@@ -97,15 +104,16 @@ end
 #
 # == Single-file fixtures
 #
-# This type of fixture was the original format for Active Record that has since been deprecated in favor of the YAML and CSV formats.
-# Fixtures for this format are created by placing text files in a sub-directory (with the name of the model) to the directory
-# appointed by <tt>ActiveSupport::TestCase.fixture_path=(path)</tt> (this is automatically configured for Rails, so you can just
-# put your files in <tt><your-rails-app>/test/fixtures/<your-model-name>/</tt> --
+# This type of fixture was the original format for Active Record that has since been deprecated in
+# favor of the YAML and CSV formats.
+# Fixtures for this format are created by placing text files in a sub-directory (with the name of the model)
+# to the directory appointed by <tt>ActiveSupport::TestCase.fixture_path=(path)</tt> (this is automatically
+# configured for Rails, so you can just put your files in <tt><your-rails-app>/test/fixtures/<your-model-name>/</tt> --
 # like <tt><your-rails-app>/test/fixtures/web_sites/</tt> for the WebSite model).
 #
 # Each text file placed in this directory represents a "record".  Usually these types of fixtures are named without
-# extensions, but if you are on a Windows machine, you might consider adding <tt>.txt</tt> as the extension.  Here's what the
-# above example might look like:
+# extensions, but if you are on a Windows machine, you might consider adding <tt>.txt</tt> as the extension.
+# Here's what the above example might look like:
 #
 #   web_sites/google
 #   web_sites/yahoo.txt
@@ -131,7 +139,8 @@ end
 #     end
 #   end
 #
-# By default, the <tt>test_helper module</tt> will load all of your fixtures into your test database, so this test will succeed.
+# By default, the <tt>test_helper module</tt> will load all of your fixtures into your test database,
+# so this test will succeed.
 # The testing environment will automatically load the all fixtures into the database before each test.
 # To ensure consistent data, the environment deletes the fixtures before running the load.
 #
@@ -180,13 +189,15 @@ end
 # This will create 1000 very simple YAML fixtures.
 #
 # Using ERb, you can also inject dynamic values into your fixtures with inserts like <tt><%= Date.today.strftime("%Y-%m-%d") %></tt>.
-# This is however a feature to be used with some caution. The point of fixtures are that they're stable units of predictable
-# sample data. If you feel that you need to inject dynamic values, then perhaps you should reexamine whether your application
-# is properly testable. Hence, dynamic values in fixtures are to be considered a code smell.
+# This is however a feature to be used with some caution. The point of fixtures are that they're
+# stable units of predictable sample data. If you feel that you need to inject dynamic values, then
+# perhaps you should reexamine whether your application is properly testable. Hence, dynamic values
+# in fixtures are to be considered a code smell.
 #
 # = Transactional fixtures
 #
-# TestCases can use begin+rollback to isolate their changes to the database instead of having to delete+insert for every test case.
+# TestCases can use begin+rollback to isolate their changes to the database instead of having to
+# delete+insert for every test case.
 #
 #   class FooTest < ActiveSupport::TestCase
 #     self.use_transactional_fixtures = true
@@ -203,15 +214,18 @@ end
 #   end
 #
 # If you preload your test database with all fixture data (probably in the Rakefile task) and use transactional fixtures,
-# then you may omit all fixtures declarations in your test cases since all the data's already there and every case rolls back its changes.
+# then you may omit all fixtures declarations in your test cases since all the data's already there
+# and every case rolls back its changes.
 #
 # In order to use instantiated fixtures with preloaded data, set +self.pre_loaded_fixtures+ to true. This will provide
-# access to fixture data for every table that has been loaded through fixtures (depending on the value of +use_instantiated_fixtures+)
+# access to fixture data for every table that has been loaded through fixtures (depending on the
+# value of +use_instantiated_fixtures+)
 #
 # When *not* to use transactional fixtures:
 #
-# 1. You're testing whether a transaction works correctly. Nested transactions don't commit until all parent transactions commit,
-#    particularly, the fixtures transaction which is begun in setup and rolled back in teardown. Thus, you won't be able to verify
+# 1. You're testing whether a transaction works correctly. Nested transactions don't commit until
+#    all parent transactions commit, particularly, the fixtures transaction which is begun in setup
+#    and rolled back in teardown. Thus, you won't be able to verify
 #    the results of your transaction until Active Record supports nested transactions or savepoints (in progress).
 # 2. Your database does not support transactions. Every Active Record database supports transactions except MySQL MyISAM.
 #    Use InnoDB, MaxDB, or NDB instead.
@@ -335,7 +349,6 @@ end
 #   george:
 #     id: 1
 #     name: George the Monkey
-#     pirate_id: 1
 #
 #   ### in fruits.yml
 #
@@ -370,8 +383,8 @@ end
 #   ### in monkeys.yml
 #
 #   george:
+#     id: 1
 #     name: George the Monkey
-#     pirate: reginald
 #     fruits: apple, orange, grape
 #
 #   ### in fruits.yml
@@ -408,7 +421,7 @@ end
 #     subdomain: $LABEL
 #
 # Also, sometimes (like when porting older join table fixtures) you'll need
-# to be able to get ahold of the identifier for a given label. ERB
+# to be able to get a hold of the identifier for a given label. ERB
 # to the rescue:
 #
 #   george_reginald:
@@ -492,6 +505,7 @@ class Fixtures < (RUBY_VERSION < '1.9' ? YAML::Omap : Hash)
 
   def self.create_fixtures(fixtures_directory, table_names, class_names = {})
     table_names = [table_names].flatten.map { |n| n.to_s }
+    table_names.each { |n| class_names[n.tr('/', '_').to_sym] = n.classify if n.include?('/') }
     connection  = block_given? ? yield : ActiveRecord::Base.connection
 
     table_names_to_fetch = table_names.reject { |table_name| fixture_is_cached?(connection, table_name) }
@@ -502,7 +516,7 @@ class Fixtures < (RUBY_VERSION < '1.9' ? YAML::Omap : Hash)
           fixtures_map = {}
 
           fixtures = table_names_to_fetch.map do |table_name|
-            fixtures_map[table_name] = Fixtures.new(connection, File.split(table_name.to_s).last, class_names[table_name.to_sym], File.join(fixtures_directory, table_name.to_s))
+            fixtures_map[table_name] = Fixtures.new(connection, table_name.tr('/', '_'), class_names[table_name.tr('/', '_').to_sym], File.join(fixtures_directory, table_name))
           end
 
           all_loaded_fixtures.update(fixtures_map)
@@ -514,7 +528,7 @@ class Fixtures < (RUBY_VERSION < '1.9' ? YAML::Omap : Hash)
             # Cap primary key sequences to max(pk).
             if connection.respond_to?(:reset_pk_sequence!)
               table_names.each do |table_name|
-                connection.reset_pk_sequence!(table_name)
+                connection.reset_pk_sequence!(table_name.tr('/', '_'))
               end
             end
           end
@@ -662,14 +676,13 @@ class Fixtures < (RUBY_VERSION < '1.9' ? YAML::Omap : Hash)
     end
 
     def has_primary_key_column?
-      @has_primary_key_column ||= model_class && primary_key_name &&
-        model_class.columns.find { |c| c.name == primary_key_name }
+      @has_primary_key_column ||= primary_key_name &&
+        model_class.columns.any? { |c| c.name == primary_key_name }
     end
 
     def timestamp_column_names
-      @timestamp_column_names ||= %w(created_at created_on updated_at updated_on).select do |name|
-        column_names.include?(name)
-      end
+      @timestamp_column_names ||=
+        %w(created_at created_on updated_at updated_on) & column_names
     end
 
     def inheritance_column_name
@@ -677,7 +690,7 @@ class Fixtures < (RUBY_VERSION < '1.9' ? YAML::Omap : Hash)
     end
 
     def column_names
-      @column_names ||= @connection.columns(@table_name).collect(&:name)
+      @column_names ||= @connection.columns(@table_name).collect { |c| c.name }
     end
 
     def read_fixture_files
@@ -685,15 +698,15 @@ class Fixtures < (RUBY_VERSION < '1.9' ? YAML::Omap : Hash)
         read_yaml_fixture_files
       elsif File.file?(csv_file_path)
         read_csv_fixture_files
+      else
+        raise FixturesFileNotFound, "Could not find #{yaml_file_path} or #{csv_file_path}"
       end
     end
 
     def read_yaml_fixture_files
-      yaml_string = ""
-      Dir["#{@fixture_path}/**/*.yml"].select { |f| test(?f, f) }.each do |subfixture_path|
-        yaml_string << IO.read(subfixture_path)
-      end
-      yaml_string << IO.read(yaml_file_path)
+      yaml_string = (Dir["#{@fixture_path}/**/*.yml"].select { |f|
+        File.file?(f)
+      } + [yaml_file_path]).map { |file_path| IO.read(file_path) }.join
 
       if yaml = parse_yaml_string(yaml_string)
         # If the file is an ordered map, extract its children.
@@ -785,16 +798,14 @@ class Fixture #:nodoc:
   end
 
   def key_list
-    columns = @fixture.keys.collect{ |column_name| @connection.quote_column_name(column_name) }
-    columns.join(", ")
+    @fixture.keys.map { |column_name| @connection.quote_column_name(column_name) }.join(', ')
   end
 
   def value_list
-    list = @fixture.inject([]) do |fixtures, (key, value)|
-      col = model_class.columns_hash[key] if model_class.respond_to?(:ancestors) && model_class.ancestors.include?(ActiveRecord::Base)
-      fixtures << @connection.quote(value, col).gsub('[^\]\\n', "\n").gsub('[^\]\\r', "\r")
-    end
-    list * ', '
+    cols = (model_class && model_class < ActiveRecord::Base) ? model_class.columns_hash : {}
+    @fixture.map do |key, value|
+      @connection.quote(value, cols[key]).gsub('[^\]\\n', "\n").gsub('[^\]\\r', "\r")
+    end.join(', ')
   end
 
   def find
@@ -808,27 +819,25 @@ end
 
 module ActiveRecord
   module TestFixtures
-    def self.included(base)
-      base.class_eval do
-        setup :setup_fixtures
-        teardown :teardown_fixtures
+    extend ActiveSupport::Concern
 
-        superclass_delegating_accessor :fixture_path
-        superclass_delegating_accessor :fixture_table_names
-        superclass_delegating_accessor :fixture_class_names
-        superclass_delegating_accessor :use_transactional_fixtures
-        superclass_delegating_accessor :use_instantiated_fixtures   # true, false, or :no_instances
-        superclass_delegating_accessor :pre_loaded_fixtures
+    included do
+      setup :setup_fixtures
+      teardown :teardown_fixtures
 
-        self.fixture_table_names = []
-        self.use_transactional_fixtures = false
-        self.use_instantiated_fixtures = true
-        self.pre_loaded_fixtures = false
+      superclass_delegating_accessor :fixture_path
+      superclass_delegating_accessor :fixture_table_names
+      superclass_delegating_accessor :fixture_class_names
+      superclass_delegating_accessor :use_transactional_fixtures
+      superclass_delegating_accessor :use_instantiated_fixtures   # true, false, or :no_instances
+      superclass_delegating_accessor :pre_loaded_fixtures
 
-        self.fixture_class_names = {}
-      end
+      self.fixture_table_names = []
+      self.use_transactional_fixtures = true
+      self.use_instantiated_fixtures = false
+      self.pre_loaded_fixtures = false
 
-      base.extend ClassMethods
+      self.fixture_class_names = {}
     end
 
     module ClassMethods
@@ -838,8 +847,8 @@ module ActiveRecord
 
       def fixtures(*table_names)
         if table_names.first == :all
-          table_names = Dir["#{fixture_path}/*.yml"] + Dir["#{fixture_path}/*.csv"]
-          table_names.map! { |f| File.basename(f).split('.')[0..-2].join('.') }
+          table_names = Dir["#{fixture_path}/**/*.{yml,csv}"]
+          table_names.map! { |f| f[(fixture_path.size + 1)..-5] }
         else
           table_names = table_names.flatten.map { |n| n.to_s }
         end
@@ -870,11 +879,11 @@ module ActiveRecord
       end
 
       def setup_fixture_accessors(table_names = nil)
-        table_names = [table_names] if table_names && !table_names.respond_to?(:each)
-        (table_names || fixture_table_names).each do |table_name|
-          table_name = table_name.to_s.tr('.', '_')
+        table_names = Array.wrap(table_names || fixture_table_names)
+        table_names.each do |table_name|
+          table_name = table_name.to_s.tr('./', '_')
 
-          define_method(table_name) do |*fixtures|
+          redefine_method(table_name) do |*fixtures|
             force_reload = fixtures.pop if fixtures.last == true || fixtures.last == :reload
 
             @fixture_cache[table_name] ||= {}
@@ -897,7 +906,7 @@ module ActiveRecord
 
       def uses_transaction(*methods)
         @uses_transaction = [] unless defined?(@uses_transaction)
-        @uses_transaction.concat methods.map(&:to_s)
+        @uses_transaction.concat methods.map { |m| m.to_s }
       end
 
       def uses_transaction?(method)

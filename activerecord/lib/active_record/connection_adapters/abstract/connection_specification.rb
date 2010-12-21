@@ -10,7 +10,7 @@ module ActiveRecord
     ##
     # :singleton-method:
     # The connection handler
-    class_attribute :connection_handler
+    class_attribute :connection_handler, :instance_writer => false
     self.connection_handler = ConnectionAdapters::ConnectionHandler.new
 
     # Returns the connection currently associated with the class. This can
@@ -51,8 +51,8 @@ module ActiveRecord
     def self.establish_connection(spec = nil)
       case spec
         when nil
-          raise AdapterNotSpecified unless defined? RAILS_ENV
-          establish_connection(RAILS_ENV)
+          raise AdapterNotSpecified unless defined?(Rails.env)
+          establish_connection(Rails.env)
         when ConnectionSpecification
           self.connection_handler.establish_connection(name, spec)
         when Symbol, String
@@ -66,15 +66,9 @@ module ActiveRecord
           unless spec.key?(:adapter) then raise AdapterNotSpecified, "database configuration does not specify adapter" end
 
           begin
-            require 'rubygems'
-            gem "activerecord-#{spec[:adapter]}-adapter"
             require "active_record/connection_adapters/#{spec[:adapter]}_adapter"
-          rescue LoadError
-            begin
-              require "active_record/connection_adapters/#{spec[:adapter]}_adapter"
-            rescue LoadError
-              raise "Please install the #{spec[:adapter]} adapter: `gem install activerecord-#{spec[:adapter]}-adapter` (#{$!})"
-            end
+          rescue LoadError => e
+            raise "Please install the #{spec[:adapter]} adapter: `gem install activerecord-#{spec[:adapter]}-adapter` (#{e})"
           end
 
           adapter_method = "#{spec[:adapter]}_connection"
@@ -88,26 +82,6 @@ module ActiveRecord
     end
 
     class << self
-      # Deprecated and no longer has any effect.
-      def allow_concurrency
-        ActiveSupport::Deprecation.warn("ActiveRecord::Base.allow_concurrency has been deprecated and no longer has any effect. Please remove all references to allow_concurrency.")
-      end
-
-      # Deprecated and no longer has any effect.
-      def allow_concurrency=(flag)
-        ActiveSupport::Deprecation.warn("ActiveRecord::Base.allow_concurrency= has been deprecated and no longer has any effect. Please remove all references to allow_concurrency=.")
-      end
-
-      # Deprecated and no longer has any effect.
-      def verification_timeout
-        ActiveSupport::Deprecation.warn("ActiveRecord::Base.verification_timeout has been deprecated and no longer has any effect. Please remove all references to verification_timeout.")
-      end
-
-      # Deprecated and no longer has any effect.
-      def verification_timeout=(flag)
-        ActiveSupport::Deprecation.warn("ActiveRecord::Base.verification_timeout= has been deprecated and no longer has any effect. Please remove all references to verification_timeout=.")
-      end
-
       # Returns the connection currently associated with the class. This can
       # also be used to "borrow" the connection to do database work unrelated
       # to any of the specific Active Records.
@@ -123,7 +97,7 @@ module ActiveRecord
         connection_handler.retrieve_connection(self)
       end
 
-      # Returns true if +ActiveRecord+ is connected.
+      # Returns true if Active Record is connected.
       def connected?
         connection_handler.connected?(self)
       end

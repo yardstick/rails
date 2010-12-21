@@ -1,30 +1,27 @@
-require "cases/helper"
+require 'cases/helper'
 require 'models/topic'
 require 'models/developer'
 require 'models/reply'
 require 'models/minimalistic'
+require 'models/comment'
 
-class Topic; def after_find() end end
-class Developer; def after_find() end end
 class SpecialDeveloper < Developer; end
 
-class TopicManualObserver
-  include Singleton
+class SalaryChecker < ActiveRecord::Observer
+  observe :special_developer
+  attr_accessor :last_saved
 
-  attr_reader :action, :object, :callbacks
-
-  def initialize
-    Topic.add_observer(self)
-    @callbacks = []
+  def before_save(developer)
+    return developer.salary > 80000
   end
 
-  def update(callback_method, object)
-    @callbacks << { "callback_method" => callback_method, "object" => object }
+  module Implementation
+    def after_save(developer)
+      self.last_saved = developer
+    end
   end
+  include Implementation
 
-  def has_been_notified?
-    !@callbacks.empty?
-  end
 end
 
 class TopicaAuditor < ActiveRecord::Observer
@@ -42,6 +39,11 @@ class TopicObserver < ActiveRecord::Observer
 
   def after_find(topic)
     @topic = topic
+  end
+
+  # Create an after_save callback, so a notify_observer hook is created
+  # on :topic.
+  def after_save(nothing)
   end
 end
 
@@ -73,6 +75,28 @@ class MultiObserver < ActiveRecord::Observer
   end
 end
 
+class ValidatedComment < Comment
+  attr_accessor :callers
+
+  before_validation :record_callers
+
+  after_validation do
+    record_callers
+  end
+
+  def record_callers
+    callers << self.class if callers
+  end
+end
+
+class ValidatedCommentObserver < ActiveRecord::Observer
+  attr_accessor :callers
+
+  def after_validation(model)
+    callers << self.class if callers
+  end
+end
+
 class LifecycleTest < ActiveRecord::TestCase
   fixtures :topics, :developers, :minimalistics
 
@@ -80,27 +104,6 @@ class LifecycleTest < ActiveRecord::TestCase
     original_count = Topic.count
     (topic_to_be_destroyed = Topic.find(1)).destroy
     assert_equal original_count - (1 + topic_to_be_destroyed.replies.size), Topic.count
-  end
-
-  def test_after_save
-    ActiveRecord::Base.observers = :topic_manual_observer
-    ActiveRecord::Base.instantiate_observers
-
-    topic = Topic.find(1)
-    topic.title = "hello"
-    topic.save
-
-    assert TopicManualObserver.instance.has_been_notified?
-    assert_equal :after_save, TopicManualObserver.instance.callbacks.last["callback_method"]
-  end
-
-  def test_observer_update_on_save
-    ActiveRecord::Base.observers = TopicManualObserver
-    ActiveRecord::Base.instantiate_observers
-
-    topic = Topic.find(1)
-    assert TopicManualObserver.instance.has_been_notified?
-    assert_equal :after_find, TopicManualObserver.instance.callbacks.first["callback_method"]
   end
 
   def test_auto_observer
@@ -159,35 +162,37 @@ class LifecycleTest < ActiveRecord::TestCase
     assert_equal topic, observer.topic
   end
 
-  def test_after_find_is_not_created_if_its_not_used
-    # use a fresh class so an observer can't have defined an
-    # after_find on it
-    model_class = Class.new(ActiveRecord::Base)
-    observer_class = Class.new(ActiveRecord::Observer)
-    observer_class.observe(model_class)
-
-    observer = observer_class.instance
-
-    assert !model_class.method_defined?(:after_find)
-  end
-
-  def test_after_find_is_not_clobbered_if_it_already_exists
-    # use a fresh observer class so we can instantiate it (Observer is
-    # a Singleton)
-    model_class = Class.new(ActiveRecord::Base) do
-      def after_find; end
-    end
-    original_method = model_class.instance_method(:after_find)
-    observer_class = Class.new(ActiveRecord::Observer) do
-      def after_find; end
-    end
-    observer_class.observe(model_class)
-
-    observer = observer_class.instance
-    assert_equal original_method, model_class.instance_method(:after_find)
-  end
-
   def test_invalid_observer
     assert_raise(ArgumentError) { Topic.observers = Object.new; Topic.instantiate_observers }
   end
+
+  test "model callbacks fire before observers are notified" do
+    callers = []
+
+    comment = ValidatedComment.new
+    comment.callers = ValidatedCommentObserver.instance.callers = callers
+
+    comment.valid?
+    assert_equal [ValidatedComment, ValidatedComment, ValidatedCommentObserver], callers,
+      "model callbacks did not fire before observers were notified"
+  end
+
+  test "able to save developer" do
+    SalaryChecker.instance # activate
+    developer = SpecialDeveloper.new :name => 'Roger', :salary => 100000
+    assert developer.save, "developer with normal salary failed to save"
+  end
+
+  test "unable to save developer with low salary" do
+    SalaryChecker.instance # activate
+    developer = SpecialDeveloper.new :name => 'Rookie', :salary => 50000
+    assert !developer.save, "allowed to save a developer with too low salary"
+  end
+
+  test "able to call methods defined with included module" do # https://rails.lighthouseapp.com/projects/8994/tickets/6065-activerecordobserver-is-not-aware-of-method-added-by-including-modules
+    SalaryChecker.instance # activate
+    developer = SpecialDeveloper.create! :name => 'Roger', :salary => 100000
+    assert_equal developer, SalaryChecker.instance.last_saved
+  end
+
 end

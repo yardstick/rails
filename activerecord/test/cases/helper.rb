@@ -1,18 +1,17 @@
-$:.unshift(File.dirname(__FILE__) + '/../../lib')
-$:.unshift(File.dirname(__FILE__) + '/../../../activesupport/lib')
+require File.expand_path('../../../../load_paths', __FILE__)
+
+lib = File.expand_path("#{File.dirname(__FILE__)}/../../lib")
+$:.unshift(lib) unless $:.include?('lib') || $:.include?(lib)
 
 require 'config'
 
-require 'rubygems'
 require 'test/unit'
 require 'stringio'
+require 'mocha'
 
 require 'active_record'
-require 'active_record/test_case'
-require 'active_record/fixtures'
+require 'active_support/dependencies'
 require 'connection'
-
-require 'cases/repair_helper'
 
 # Show backtraces for deprecated behavior for quicker cleanup.
 ActiveSupport::Deprecation.debug = true
@@ -39,10 +38,17 @@ ActiveRecord::Base.connection.class.class_eval do
   alias_method_chain :execute, :query_record
 end
 
-# Make with_scope public for tests
-class << ActiveRecord::Base
-  public :with_scope, :with_exclusive_scope
-end
+ActiveRecord::Base.connection.class.class_eval {
+  attr_accessor :column_calls
+
+  def columns_with_calls(*args)
+    @column_calls ||= 0
+    @column_calls += 1
+    columns_without_calls(*args)
+  end
+
+  alias_method_chain :columns, :calls
+}
 
 unless ENV['FIXTURE_DEBUG']
   module ActiveRecord::TestFixtures::ClassMethods
@@ -54,9 +60,10 @@ unless ENV['FIXTURE_DEBUG']
   end
 end
 
+require "cases/validations_repair_helper"
 class ActiveSupport::TestCase
   include ActiveRecord::TestFixtures
-  include ActiveRecord::Testing::RepairHelper
+  include ActiveRecord::ValidationsRepairHelper
 
   self.fixture_path = FIXTURES_ROOT
   self.use_instantiated_fixtures  = false
@@ -65,4 +72,21 @@ class ActiveSupport::TestCase
   def create_fixtures(*table_names, &block)
     Fixtures.create_fixtures(ActiveSupport::TestCase.fixture_path, table_names, {}, &block)
   end
+end
+
+# silence verbose schema loading
+original_stdout = $stdout
+$stdout = StringIO.new
+
+begin
+  adapter_name = ActiveRecord::Base.connection.adapter_name.downcase
+  adapter_specific_schema_file = SCHEMA_ROOT + "/#{adapter_name}_specific_schema.rb"
+
+  load SCHEMA_ROOT + "/schema.rb"
+
+  if File.exists?(adapter_specific_schema_file)
+    load adapter_specific_schema_file
+  end
+ensure
+  $stdout = original_stdout
 end

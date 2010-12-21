@@ -1,4 +1,5 @@
 require 'active_support/core_ext/module/attribute_accessors'
+require 'active_support/core_ext/module/delegation'
 
 module ActiveSupport
   # Look for and parse json strings that look like ISO 8601 times.
@@ -21,7 +22,7 @@ module ActiveSupport
         if name.is_a?(Module)
           @backend = name
         else
-          require "active_support/json/backends/#{name.to_s.downcase}.rb"
+          require "active_support/json/backends/#{name.to_s.downcase}"
           @backend = ActiveSupport::JSON::Backends::const_get(name)
         end
         @parse_error = @backend::ParseError

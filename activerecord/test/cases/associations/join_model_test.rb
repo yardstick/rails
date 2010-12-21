@@ -14,7 +14,9 @@ require 'models/citation'
 
 class AssociationsJoinModelTest < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
-  fixtures :posts, :authors, :categories, :categorizations, :comments, :tags, :taggings, :author_favorites, :vertices, :items, :books
+  fixtures :posts, :authors, :categories, :categorizations, :comments, :tags, :taggings, :author_favorites, :vertices, :items, :books,
+    # Reload edges table from fixtures as otherwise repeated test was failing
+    :edges
 
   def test_has_many
     assert authors(:david).categories.include?(categories(:general))
@@ -41,25 +43,23 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
     assert_queries(1) { assert_equal 0, author.unique_categorized_posts.count(:title, :conditions => "title is NULL") }
     assert !authors(:mary).unique_categorized_posts.loaded?
   end
-  
+
+  def test_column_caching
+    # pre-heat our cache
+    Post.arel_table.columns
+    Comment.columns
+
+    Post.connection.column_calls = 0
+    2.times { Post.joins(:comments).to_a }
+    assert_equal 0, Post.connection.column_calls
+  end
+
   def test_has_many_uniq_through_find
     assert_equal 1, authors(:mary).unique_categorized_posts.find(:all).size
   end
-  
+
   def test_has_many_uniq_through_dynamic_find
     assert_equal 1, authors(:mary).unique_categorized_posts.find_all_by_title("So I was thinking").size
-  end
-
-  def test_polymorphic_has_many
-    assert posts(:welcome).taggings.include?(taggings(:welcome_general))
-  end
-
-  def test_polymorphic_has_one
-    assert_equal taggings(:welcome_general), posts(:welcome).tagging
-  end
-
-  def test_polymorphic_belongs_to
-    assert_equal posts(:welcome), posts(:welcome).taggings.first.taggable
   end
 
   def test_polymorphic_has_many_going_through_join_model
@@ -290,16 +290,16 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
 
   def test_has_many_find_conditions
     assert_equal categories(:general), authors(:david).categories.find(:first, :conditions => "categories.name = 'General'")
-    assert_equal nil, authors(:david).categories.find(:first, :conditions => "categories.name = 'Technology'")
+    assert_nil authors(:david).categories.find(:first, :conditions => "categories.name = 'Technology'")
   end
 
   def test_has_many_class_methods_called_by_method_missing
     assert_equal categories(:general), authors(:david).categories.find_all_by_name('General').first
-    assert_equal nil, authors(:david).categories.find_by_name('Technology')
+    assert_nil authors(:david).categories.find_by_name('Technology')
   end
 
   def test_has_many_array_methods_called_by_method_missing
-    assert true, authors(:david).categories.any? { |category| category.name == 'General' }
+    assert authors(:david).categories.any? { |category| category.name == 'General' }
     assert_nothing_raised { authors(:david).categories.sort }
   end
 
@@ -307,7 +307,7 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
     assert_equal [], posts(:thinking).authors
     assert_equal [authors(:mary)], posts(:authorless).authors
   end
-  
+
   def test_both_scoped_and_explicit_joins_should_be_respected
     assert_nothing_raised do
       Post.send(:with_scope, :find => {:joins => "left outer join comments on comments.id = posts.id"}) do
@@ -343,14 +343,16 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
   end
 
   def test_has_many_polymorphic_with_source_type
-    assert_equal posts(:welcome, :thinking), tags(:general).tagged_posts
+    # added sort by ID as otherwise Oracle select sometimes returned rows in different order
+    assert_equal posts(:welcome, :thinking).sort_by(&:id), tags(:general).tagged_posts.sort_by(&:id)
   end
 
   def test_eager_has_many_polymorphic_with_source_type
     tag_with_include = Tag.find(tags(:general).id, :include => :tagged_posts)
     desired = posts(:welcome, :thinking)
     assert_no_queries do
-      assert_equal desired, tag_with_include.tagged_posts
+      # added sort by ID as otherwise test using JRuby was failing as array elements were in different order
+      assert_equal desired.sort_by(&:id), tag_with_include.tagged_posts.sort_by(&:id)
     end
     assert_equal 5, tag_with_include.taggings.length
   end
@@ -435,8 +437,8 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
 
   def test_has_many_through_uses_conditions_specified_on_the_has_many_association
     author = Author.find(:first)
-    assert !author.comments.blank?
-    assert author.nonexistant_comments.blank?
+    assert_present author.comments
+    assert_blank author.nonexistant_comments
   end
 
   def test_has_many_through_uses_correct_attributes
@@ -583,7 +585,7 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
   def test_calculations_on_has_many_through_should_disambiguate_fields
     assert_nothing_raised { authors(:david).categories.maximum(:id) }
   end
-  
+
   def test_calculations_on_has_many_through_should_not_disambiguate_fields_unless_necessary
     assert_nothing_raised { authors(:david).categories.maximum("categories.id") }
   end
@@ -683,7 +685,7 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
     end
     assert ! david.categories.loaded?
   end
-  
+
   def test_has_many_through_include_returns_false_for_non_matching_record_to_verify_scoping
     david = authors(:david)
     category = Category.create!(:name => 'Not Associated')

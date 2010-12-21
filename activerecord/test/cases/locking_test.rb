@@ -1,3 +1,4 @@
+require 'thread'
 require "cases/helper"
 require 'models/person'
 require 'models/reader'
@@ -196,7 +197,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
     assert_raises(ActiveRecord::RecordNotFound) { Person.find(p1.id) }
     assert_raises(ActiveRecord::RecordNotFound) { LegacyThing.find(t.id) }
   end
-  
+
   def test_quote_table_name
     ref = references(:michael_magician)
     ref.favourite = !ref.favourite
@@ -207,8 +208,11 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   # is nothing else being updated.
   def test_update_without_attributes_does_not_only_update_lock_version
     assert_nothing_raised do
-      p1 = Person.new(:first_name => 'anika')
-      p1.send(:update_with_lock, [])
+      p1 = Person.create!(:first_name => 'anika')
+      lock_version = p1.lock_version
+      p1.save
+      p1.reload
+      assert_equal lock_version, p1.lock_version
     end
   end
 
@@ -271,7 +275,7 @@ unless current_adapter?(:SybaseAdapter, :OpenBaseAdapter)
     def test_sane_find_with_scoped_lock
       assert_nothing_raised do
         Person.transaction do
-          Person.with_scope(:find => { :lock => true }) do
+          Person.send(:with_scope, :find => { :lock => true }) do
             Person.find 1
           end
         end
@@ -310,11 +314,14 @@ unless current_adapter?(:SybaseAdapter, :OpenBaseAdapter)
         assert first.end > second.end
       end
 
-      def test_second_lock_waits
-        assert [0.2, 1, 5].any? { |zzz|
-          first, second = duel(zzz) { Person.find 1, :lock => true }
-          second.end > first.end
-        }
+      # Hit by ruby deadlock detection since connection checkout is mutexed.
+      if RUBY_VERSION < '1.9.0'
+        def test_second_lock_waits
+          assert [0.2, 1, 5].any? { |zzz|
+            first, second = duel(zzz) { Person.find 1, :lock => true }
+            second.end > first.end
+          }
+        end
       end
 
       protected

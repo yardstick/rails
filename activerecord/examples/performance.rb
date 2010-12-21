@@ -1,20 +1,18 @@
 #!/usr/bin/env ruby -KU
 
 TIMES = (ENV['N'] || 10000).to_i
-
 require 'rubygems'
+
 gem 'addressable',  '~>2.0'
 gem 'faker',        '~>0.3.1'
 gem 'rbench',       '~>0.2.3'
+
 require 'addressable/uri'
 require 'faker'
 require 'rbench'
 
-__DIR__ = File.dirname(__FILE__)
-$:.unshift "#{__DIR__}/../lib"
-$:.unshift "#{__DIR__}/../../activesupport/lib"
-
-require 'active_record'
+require File.expand_path("../../../load_paths", __FILE__)
+require "active_record"
 
 conn = { :adapter => 'mysql',
   :database => 'activerecord_unittest',
@@ -57,7 +55,7 @@ class Exhibit < ActiveRecord::Base
   def self.feel(exhibits) exhibits.each { |e| e.feel } end
 end
 
-sqlfile = "#{__DIR__}/performance.sql"
+sqlfile = File.expand_path("../performance.sql", __FILE__)
 
 if File.exists?(sqlfile)
   mysql_bin = %w[mysql mysql5].detect { |bin| `which #{bin}`.length > 0 }
@@ -90,7 +88,7 @@ else
     )
   end
 
-  mysqldump_bin = %w[mysqldump mysqldump5].detect { |bin| `which #{bin}`.length > 0 }
+  mysqldump_bin = %w[mysqldump mysqldump5].select { |bin| `which #{bin}`.length > 0 }
   `#{mysqldump_bin} -u #{conn[:username]} #{"-p#{conn[:password]}" unless conn[:password].blank?} #{conn[:database]} exhibits users > #{sqlfile}`
 end
 
@@ -118,15 +116,15 @@ RBench.run(TIMES) do
   end
 
   report 'Model.all limit(100)', (TIMES / 10).ceil do
-    ar { Exhibit.look Exhibit.all(:limit => 100) }
+    ar { Exhibit.look Exhibit.limit(100) }
   end
 
   report 'Model.all limit(100) with relationship', (TIMES / 10).ceil do
-    ar { Exhibit.feel Exhibit.all(:limit => 100, :include => :user) }
+    ar { Exhibit.feel Exhibit.limit(100).includes(:user) }
   end
 
   report 'Model.all limit(10,000)', (TIMES / 1000).ceil do
-    ar { Exhibit.look Exhibit.all(:limit => 10000) }
+    ar { Exhibit.look Exhibit.limit(10000) }
   end
 
   exhibit = {
@@ -155,23 +153,6 @@ RBench.run(TIMES) do
 
   report 'Model.transaction' do
     ar { Exhibit.transaction { Exhibit.new } }
-  end
-
-  report 'Model.find(id)' do
-    id = Exhibit.first.id
-    ar { Exhibit.find(id) }
-  end
-
-  report 'Model.find_by_sql' do
-    ar { Exhibit.find_by_sql("SELECT * FROM exhibits WHERE id = #{(rand * 1000 + 1).to_i}").first }
-  end
-
-  report 'Model.log', (TIMES * 10) do
-    ar { Exhibit.connection.send(:log, "hello", "world") {} }
-  end
-
-  report 'AR.execute(query)', (TIMES / 2) do
-    ar { ActiveRecord::Base.connection.execute("Select * from exhibits where id = #{(rand * 1000 + 1).to_i}") }
   end
 
   report 'Model.find(id)' do

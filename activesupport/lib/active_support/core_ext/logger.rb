@@ -1,8 +1,9 @@
-# Adds the 'around_level' method to Logger.
+require 'active_support/core_ext/class/attribute_accessors'
 
-class Logger
+# Adds the 'around_level' method to Logger.
+class Logger #:nodoc:
   def self.define_around_helper(level)
-    module_eval <<-end_eval
+    module_eval <<-end_eval, __FILE__, __LINE__ + 1
       def around_#{level}(before_message, after_message, &block)  # def around_debug(before_message, after_message, &block)
         self.#{level}(before_message)                             #   self.debug(before_message)
         return_value = block.call(self)                           #   return_value = block.call(self)
@@ -17,7 +18,7 @@ end
 
 require 'logger'
 
-# Extensions to the built in Ruby logger.
+# Extensions to the built-in Ruby logger.
 #
 # If you want to use the default log formatter as defined in the Ruby core, then you
 # will need to set the formatter for the logger as in:
@@ -69,44 +70,6 @@ class Logger
   # displays the log message
   def formatter
     @formatter ||= SimpleFormatter.new
-  end
-
-  unless const_defined? :Formatter
-    class Formatter
-      Format = "%s, [%s#%d] %5s -- %s: %s\n"
-
-      attr_accessor :datetime_format
-
-      def initialize
-        @datetime_format = nil
-      end
-
-      def call(severity, time, progname, msg)
-        Format % [severity[0..0], format_datetime(time), $$, severity, progname,
-        msg2str(msg)]
-      end
-
-      private
-        def format_datetime(time)
-          if @datetime_format.nil?
-            time.strftime("%Y-%m-%dT%H:%M:%S.") << "%06d " % time.usec
-          else
-            time.strftime(@datetime_format)
-          end
-        end
-
-        def msg2str(msg)
-          case msg
-          when ::String
-            msg
-          when ::Exception
-            "#{ msg.message } (#{ msg.class })\n" <<
-            (msg.backtrace || []).join("\n")
-          else
-            msg.inspect
-          end
-        end
-    end
   end
 
   # Simple formatter which only displays the message.

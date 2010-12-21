@@ -30,13 +30,14 @@ if ActiveRecord::Base.connection.supports_migrations?
       conn = ActiveRecord::Base.connection
 
       conn.drop_table(ActiveRecord::Migrator.schema_migrations_table_name) if conn.table_exists?(ActiveRecord::Migrator.schema_migrations_table_name)
-      ActiveRecord::Base.table_name_prefix = 'foo_'
-      ActiveRecord::Base.table_name_suffix = '_bar'
+      # Use shorter prefix and suffix as in Oracle database identifier cannot be larger than 30 characters
+      ActiveRecord::Base.table_name_prefix = 'p_'
+      ActiveRecord::Base.table_name_suffix = '_s'
       conn.drop_table(ActiveRecord::Migrator.schema_migrations_table_name) if conn.table_exists?(ActiveRecord::Migrator.schema_migrations_table_name)
 
       conn.initialize_schema_migrations_table
 
-      assert_equal "foo_unique_schema_migrations_bar", conn.indexes(ActiveRecord::Migrator.schema_migrations_table_name)[0][:name]
+      assert_equal "p_unique_schema_migrations_s", conn.indexes(ActiveRecord::Migrator.schema_migrations_table_name)[0][:name]
     ensure
       ActiveRecord::Base.table_name_prefix = ""
       ActiveRecord::Base.table_name_suffix = ""
@@ -83,13 +84,17 @@ if ActiveRecord::Base.connection.supports_migrations?
 
       # Orcl nds shrt indx nms.  Sybs 2.
       # OpenBase does not have named indexes.  You must specify a single column name
-      unless current_adapter?(:OracleAdapter, :SybaseAdapter, :OpenBaseAdapter)
+      unless current_adapter?(:SybaseAdapter, :OpenBaseAdapter)
         assert_nothing_raised { Person.connection.add_index("people", ["last_name", "first_name"]) }
         assert_nothing_raised { Person.connection.remove_index("people", :column => ["last_name", "first_name"]) }
-        assert_nothing_raised { Person.connection.add_index("people", ["last_name", "first_name"]) }
-        assert_nothing_raised { Person.connection.remove_index("people", :name => "index_people_on_last_name_and_first_name") }
-        assert_nothing_raised { Person.connection.add_index("people", ["last_name", "first_name"]) }
-        assert_nothing_raised { Person.connection.remove_index("people", "last_name_and_first_name") }
+        # Oracle adapter cannot have specified index name larger than 30 characters
+        # Oracle adapter is shortening index name when just column list is given
+        unless current_adapter?(:OracleAdapter)
+          assert_nothing_raised { Person.connection.add_index("people", ["last_name", "first_name"]) }
+          assert_nothing_raised { Person.connection.remove_index("people", :name => :index_people_on_last_name_and_first_name) }
+          assert_nothing_raised { Person.connection.add_index("people", ["last_name", "first_name"]) }
+          assert_nothing_raised { Person.connection.remove_index("people", "last_name_and_first_name") }
+        end
         assert_nothing_raised { Person.connection.add_index("people", ["last_name", "first_name"]) }
         assert_nothing_raised { Person.connection.remove_index("people", ["last_name", "first_name"]) }
         assert_nothing_raised { Person.connection.add_index("people", ["last_name"], :length => 10) }
@@ -121,24 +126,25 @@ if ActiveRecord::Base.connection.supports_migrations?
 
     def test_index_symbol_names
       assert_nothing_raised { Person.connection.add_index :people, :primary_contact_id, :name => :symbol_index_name }
-      assert Person.connection.index_exists?(:people, :symbol_index_name, true)
+      assert Person.connection.index_exists?(:people, :primary_contact_id, :name => :symbol_index_name)
       assert_nothing_raised { Person.connection.remove_index :people, :name => :symbol_index_name }
-      assert_equal true, !Person.connection.index_exists?(:people, :symbol_index_name, false)
+      assert !Person.connection.index_exists?(:people, :primary_contact_id, :name => :symbol_index_name)
     end
 
     def test_add_index_length_limit
       good_index_name = 'x' * Person.connection.index_name_length
       too_long_index_name = good_index_name + 'x'
-      assert_nothing_raised { Person.connection.add_index("people", "first_name", :name => too_long_index_name) }
-      assert !Person.connection.index_exists?("people", too_long_index_name, false)
+      assert_raise(ArgumentError)  { Person.connection.add_index("people", "first_name", :name => too_long_index_name) }
+      assert !Person.connection.index_name_exists?("people", too_long_index_name, false)
       assert_nothing_raised { Person.connection.add_index("people", "first_name", :name => good_index_name) }
-      assert Person.connection.index_exists?("people", good_index_name, false)
+      assert Person.connection.index_name_exists?("people", good_index_name, false)
+      Person.connection.remove_index("people", :name => good_index_name)
     end
 
     def test_remove_nonexistent_index
       # we do this by name, so OpenBase is a wash as noted above
       unless current_adapter?(:OpenBaseAdapter)
-        assert_nothing_raised { Person.connection.remove_index("people", "no_such_index") }
+        assert_raise(ArgumentError) { Person.connection.remove_index("people", "no_such_index") }
       end
     end
 
@@ -148,16 +154,63 @@ if ActiveRecord::Base.connection.supports_migrations?
         Person.connection.add_index('people', [:first_name], :name => 'old_idx')
         assert_nothing_raised { Person.connection.rename_index('people', 'old_idx', 'new_idx') }
         # if the adapter doesn't support the indexes call, pick defaults that let the test pass
-        assert !Person.connection.index_exists?('people', 'old_idx', false)
-        assert Person.connection.index_exists?('people', 'new_idx', true)
+        assert !Person.connection.index_name_exists?('people', 'old_idx', false)
+        assert Person.connection.index_name_exists?('people', 'new_idx', true)
       end
     end
 
     def test_double_add_index
       unless current_adapter?(:OpenBaseAdapter)
         Person.connection.add_index('people', [:first_name], :name => 'some_idx')
-        assert_nothing_raised { Person.connection.add_index('people', [:first_name], :name => 'some_idx') }
+        assert_raise(ArgumentError) { Person.connection.add_index('people', [:first_name], :name => 'some_idx') }
       end
+    end
+
+    def test_index_exists
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string, :limit => 100
+        t.column :bar, :string, :limit => 100
+      end
+      Person.connection.add_index :testings, :foo
+
+      assert Person.connection.index_exists?(:testings, :foo)
+      assert !Person.connection.index_exists?(:testings, :bar)
+    ensure
+      Person.connection.drop_table :testings rescue nil
+    end
+
+    def test_index_exists_on_multiple_columns
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string, :limit => 100
+        t.column :bar, :string, :limit => 100
+      end
+      Person.connection.add_index :testings, [:foo, :bar]
+
+      assert Person.connection.index_exists?(:testings, [:foo, :bar])
+    ensure
+      Person.connection.drop_table :testings rescue nil
+    end
+
+    def test_unique_index_exists
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string, :limit => 100
+      end
+      Person.connection.add_index :testings, :foo, :unique => true
+
+      assert Person.connection.index_exists?(:testings, :foo, :unique => true)
+    ensure
+      Person.connection.drop_table :testings rescue nil
+    end
+
+    def test_named_index_exists
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string, :limit => 100
+      end
+      Person.connection.add_index :testings, :foo, :name => "custom_index_name"
+
+      assert Person.connection.index_exists?(:testings, :foo, :name => "custom_index_name")
+    ensure
+      Person.connection.drop_table :testings rescue nil
     end
 
     def testing_table_with_only_foo_attribute
@@ -211,7 +264,7 @@ if ActiveRecord::Base.connection.supports_migrations?
 
     def test_create_table_with_defaults
       # MySQL doesn't allow defaults on TEXT or BLOB columns.
-      mysql = current_adapter?(:MysqlAdapter)
+      mysql = current_adapter?(:MysqlAdapter) || current_adapter?(:Mysql2Adapter)
 
       Person.connection.create_table :testings do |t|
         t.column :one, :string, :default => "hello"
@@ -268,7 +321,7 @@ if ActiveRecord::Base.connection.supports_migrations?
         assert_equal 'integer', four.sql_type
         assert_equal 'bigint', eight.sql_type
         assert_equal 'integer', eleven.sql_type
-      elsif current_adapter?(:MysqlAdapter)
+      elsif current_adapter?(:MysqlAdapter) or current_adapter?(:Mysql2Adapter)
         assert_match 'int(11)', default.sql_type
         assert_match 'tinyint', one.sql_type
         assert_match 'int', four.sql_type
@@ -513,32 +566,37 @@ if ActiveRecord::Base.connection.supports_migrations?
         assert_equal Date, bob.favorite_day.class
       end
 
-      # Test DateTime column and defaults, including timezone.
-      # FIXME: moment of truth may be Time on 64-bit platforms.
-      if bob.moment_of_truth.is_a?(DateTime)
+      # Oracle adapter stores Time or DateTime with timezone value already in _before_type_cast column
+      # therefore no timezone change is done afterwards when default timezone is changed
+      unless current_adapter?(:OracleAdapter)
+        # Test DateTime column and defaults, including timezone.
+        # FIXME: moment of truth may be Time on 64-bit platforms.
+        if bob.moment_of_truth.is_a?(DateTime)
 
-        with_env_tz 'US/Eastern' do
-          assert_equal DateTime.local_offset, bob.moment_of_truth.offset
-          assert_not_equal 0, bob.moment_of_truth.offset
-          assert_not_equal "Z", bob.moment_of_truth.zone
-          # US/Eastern is -5 hours from GMT
-          assert_equal Rational(-5, 24), bob.moment_of_truth.offset
-          assert_match /\A-05:?00\Z/, bob.moment_of_truth.zone #ruby 1.8.6 uses HH:MM, prior versions use HHMM
-          assert_equal DateTime::ITALY, bob.moment_of_truth.start
+          with_env_tz 'US/Eastern' do
+            bob.reload
+            assert_equal DateTime.local_offset, bob.moment_of_truth.offset
+            assert_not_equal 0, bob.moment_of_truth.offset
+            assert_not_equal "Z", bob.moment_of_truth.zone
+            # US/Eastern is -5 hours from GMT
+            assert_equal Rational(-5, 24), bob.moment_of_truth.offset
+            assert_match(/\A-05:?00\Z/, bob.moment_of_truth.zone) #ruby 1.8.6 uses HH:MM, prior versions use HHMM
+            assert_equal DateTime::ITALY, bob.moment_of_truth.start
+          end
         end
       end
 
-      assert_equal TrueClass, bob.male?.class
+      assert_instance_of TrueClass, bob.male?
       assert_kind_of BigDecimal, bob.wealth
     end
 
-    if current_adapter?(:MysqlAdapter)
+    if current_adapter?(:MysqlAdapter) or current_adapter?(:Mysql2Adapter)
       def test_unabstracted_database_dependent_types
         Person.delete_all
 
         ActiveRecord::Migration.add_column :people, :intelligence_quotient, :tinyint
         Person.reset_column_information
-        assert_match /tinyint/, Person.columns_hash['intelligence_quotient'].sql_type
+        assert_match(/tinyint/, Person.columns_hash['intelligence_quotient'].sql_type)
       ensure
         ActiveRecord::Migration.remove_column :people, :intelligence_quotient rescue nil
       end
@@ -572,7 +630,7 @@ if ActiveRecord::Base.connection.supports_migrations?
       assert !Person.column_methods_hash.include?(:last_name)
     end
 
-    if current_adapter?(:MysqlAdapter)
+    if current_adapter?(:MysqlAdapter) or current_adapter?(:Mysql2Adapter)
       def testing_table_for_positioning
         Person.connection.create_table :testings, :id => false do |t|
           t.column :first, :integer
@@ -685,7 +743,7 @@ if ActiveRecord::Base.connection.supports_migrations?
       ActiveRecord::Base.connection.create_table(:hats) do |table|
         table.column :hat_name, :string, :default => nil
       end
-      exception = if current_adapter?(:PostgreSQLAdapter)
+      exception = if current_adapter?(:PostgreSQLAdapter, :OracleAdapter)
         ActiveRecord::StatementInvalid
       else
         ActiveRecord::ActiveRecordError
@@ -757,6 +815,35 @@ if ActiveRecord::Base.connection.supports_migrations?
 
         Topic.connection.change_column "topics", "written_on", :datetime, :null => false
         Topic.reset_column_information
+
+        Topic.connection.change_column "topics", "written_on", :datetime, :null => true
+        Topic.reset_column_information
+      end
+    end
+
+    if current_adapter?(:SQLiteAdapter)
+      def test_rename_table_for_sqlite_should_work_with_reserved_words
+        begin
+          assert_nothing_raised do
+            ActiveRecord::Base.connection.rename_table :references, :old_references
+            ActiveRecord::Base.connection.create_table :octopuses do |t|
+              t.column :url, :string
+            end
+          end
+
+          assert_nothing_raised { ActiveRecord::Base.connection.rename_table :octopuses, :references }
+
+          # Using explicit id in insert for compatibility across all databases
+          con = ActiveRecord::Base.connection
+          assert_nothing_raised do
+            con.execute "INSERT INTO 'references' (#{con.quote_column_name('id')}, #{con.quote_column_name('url')}) VALUES (1, 'http://rubyonrails.com')"
+          end
+          assert_equal 'http://rubyonrails.com', ActiveRecord::Base.connection.select_value("SELECT url FROM 'references' WHERE id=1")
+
+        ensure
+          ActiveRecord::Base.connection.drop_table :references
+          ActiveRecord::Base.connection.rename_table :old_references, :references
+        end
       end
     end
 
@@ -819,19 +906,20 @@ if ActiveRecord::Base.connection.supports_migrations?
 
     def test_change_column
       Person.connection.add_column 'people', 'age', :integer
-      old_columns = Person.connection.columns(Person.table_name, "#{name} Columns")
+      label = "test_change_column Columns"
+      old_columns = Person.connection.columns(Person.table_name, label)
       assert old_columns.find { |c| c.name == 'age' and c.type == :integer }
 
       assert_nothing_raised { Person.connection.change_column "people", "age", :string }
 
-      new_columns = Person.connection.columns(Person.table_name, "#{name} Columns")
+      new_columns = Person.connection.columns(Person.table_name, label)
       assert_nil new_columns.find { |c| c.name == 'age' and c.type == :integer }
       assert new_columns.find { |c| c.name == 'age' and c.type == :string }
 
-      old_columns = Topic.connection.columns(Topic.table_name, "#{name} Columns")
+      old_columns = Topic.connection.columns(Topic.table_name, label)
       assert old_columns.find { |c| c.name == 'approved' and c.type == :boolean and c.default == true }
       assert_nothing_raised { Topic.connection.change_column :topics, :approved, :boolean, :default => false }
-      new_columns = Topic.connection.columns(Topic.table_name, "#{name} Columns")
+      new_columns = Topic.connection.columns(Topic.table_name, label)
       assert_nil new_columns.find { |c| c.name == 'approved' and c.type == :boolean and c.default == true }
       assert new_columns.find { |c| c.name == 'approved' and c.type == :boolean and c.default == false }
       assert_nothing_raised { Topic.connection.change_column :topics, :approved, :boolean, :default => true }
@@ -875,7 +963,12 @@ if ActiveRecord::Base.connection.supports_migrations?
 
       assert_nothing_raised { Person.connection.change_column :testings, :select, :string, :limit => 10 }
 
-      assert_nothing_raised { Person.connection.execute "insert into testings (#{Person.connection.quote_column_name('select')}) values ('7 chars')" }
+      # Oracle needs primary key value from sequence
+      if current_adapter?(:OracleAdapter)
+        assert_nothing_raised { Person.connection.execute "insert into testings (id, #{Person.connection.quote_column_name('select')}) values (testings_seq.nextval, '7 chars')" }
+      else
+        assert_nothing_raised { Person.connection.execute "insert into testings (#{Person.connection.quote_column_name('select')}) values ('7 chars')" }
+      end
     ensure
       Person.connection.drop_table :testings rescue nil
     end
@@ -891,7 +984,12 @@ if ActiveRecord::Base.connection.supports_migrations?
       person_klass.reset_column_information
       assert_equal 99, person_klass.columns_hash["wealth"].default
       assert_equal false, person_klass.columns_hash["wealth"].null
-      assert_nothing_raised {person_klass.connection.execute("insert into testings (title) values ('tester')")}
+      # Oracle needs primary key value from sequence
+      if current_adapter?(:OracleAdapter)
+        assert_nothing_raised {person_klass.connection.execute("insert into testings (id, title) values (testings_seq.nextval, 'tester')")}
+      else
+        assert_nothing_raised {person_klass.connection.execute("insert into testings (title) values ('tester')")}
+      end
 
       # change column default to see that column doesn't lose its not null definition
       person_klass.connection.change_column_default "testings", "wealth", 100
@@ -933,6 +1031,45 @@ if ActiveRecord::Base.connection.supports_migrations?
       Person.connection.change_column_default "people", "first_name", nil
       Person.reset_column_information
       assert_nil Person.new.first_name
+    end
+
+    def test_column_exists
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string
+      end
+
+      assert Person.connection.column_exists?(:testings, :foo)
+      assert !Person.connection.column_exists?(:testings, :bar)
+    ensure
+      Person.connection.drop_table :testings rescue nil
+    end
+
+    def test_column_exists_with_type
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string
+        t.column :bar, :decimal, :precision => 8, :scale => 2
+      end
+
+      assert Person.connection.column_exists?(:testings, :foo, :string)
+      assert !Person.connection.column_exists?(:testings, :foo, :integer)
+      assert Person.connection.column_exists?(:testings, :bar, :decimal)
+      assert !Person.connection.column_exists?(:testings, :bar, :integer)
+    ensure
+      Person.connection.drop_table :testings rescue nil
+    end
+
+    def test_column_exists_with_definition
+      Person.connection.create_table :testings do |t|
+        t.column :foo, :string, :limit => 100
+        t.column :bar, :decimal, :precision => 8, :scale => 2
+      end
+
+      assert Person.connection.column_exists?(:testings, :foo, :string, :limit => 100)
+      assert !Person.connection.column_exists?(:testings, :foo, :string, :limit => 50)
+      assert Person.connection.column_exists?(:testings, :bar, :decimal, :precision => 8, :scale => 2)
+      assert !Person.connection.column_exists?(:testings, :bar, :decimal, :precision => 10, :scale => 2)
+    ensure
+      Person.connection.drop_table :testings rescue nil
     end
 
     def test_add_table
@@ -984,7 +1121,7 @@ if ActiveRecord::Base.connection.supports_migrations?
       # This one is fun. The 'value_of_e' field is defined as 'DECIMAL' with
       # precision/scale explicitly left out.  By the SQL standard, numbers
       # assigned to this field should be truncated but that's seldom respected.
-      if current_adapter?(:PostgreSQLAdapter, :SQLite2Adapter)
+      if current_adapter?(:PostgreSQLAdapter)
         # - PostgreSQL changes the SQL spec on columns declared simply as
         # "decimal" to something more useful: instead of being given a scale
         # of 0, they take on the compile-time limit for precision and scale,
@@ -997,7 +1134,7 @@ if ActiveRecord::Base.connection.supports_migrations?
       elsif current_adapter?(:SQLiteAdapter)
         # - SQLite3 stores a float, in violation of SQL
         assert_kind_of BigDecimal, b.value_of_e
-        assert_equal BigDecimal("2.71828182845905"), b.value_of_e
+        assert_in_delta BigDecimal("2.71828182845905"), b.value_of_e, 0.00000000000001
       else
         # - SQL standard is an integer
         assert_kind_of Fixnum, b.value_of_e
@@ -1110,13 +1247,25 @@ if ActiveRecord::Base.connection.supports_migrations?
       assert_equal migrations[0].name, 'InnocentJointable'
     end
 
+    def test_relative_migrations
+      $".delete_if do |fname|
+        fname == (MIGRATIONS_ROOT + "/valid/1_people_have_last_names.rb")
+      end
+      Object.send(:remove_const, :PeopleHaveLastNames)
+
+      Dir.chdir(MIGRATIONS_ROOT) do
+        ActiveRecord::Migrator.up("valid/", 1)
+      end
+
+      assert defined?(PeopleHaveLastNames)
+    end
+
     def test_only_loads_pending_migrations
       # migrate up to 1
       ActiveRecord::Migrator.up(MIGRATIONS_ROOT + "/valid", 1)
 
       # now unload the migrations that have been defined
-      PeopleHaveLastNames.unloadable
-      ActiveSupport::Dependencies.remove_unloadable_constants!
+      Object.send(:remove_const, :PeopleHaveLastNames)
 
       ActiveRecord::Migrator.migrate(MIGRATIONS_ROOT + "/valid", nil)
 
@@ -1149,23 +1298,13 @@ if ActiveRecord::Base.connection.supports_migrations?
       load(MIGRATIONS_ROOT + "/valid/1_people_have_last_names.rb")
     end
 
-    def test_migrator_interleaved_migrations
-      ActiveRecord::Migrator.up(MIGRATIONS_ROOT + "/interleaved/pass_1")
-
-      assert_nothing_raised do
-        ActiveRecord::Migrator.up(MIGRATIONS_ROOT + "/interleaved/pass_2")
-      end
-
-      Person.reset_column_information
-      assert Person.column_methods_hash.include?(:last_name)
-
-      assert_nothing_raised do
-        ActiveRecord::Migrator.down(MIGRATIONS_ROOT + "/interleaved/pass_3")
-      end
-    end
-
     def test_migrator_db_has_no_schema_migrations_table
-      ActiveRecord::Base.connection.execute("DROP TABLE schema_migrations;")
+      # Oracle adapter raises error if semicolon is present as last character
+      if current_adapter?(:OracleAdapter)
+        ActiveRecord::Base.connection.execute("DROP TABLE schema_migrations")
+      else
+        ActiveRecord::Base.connection.execute("DROP TABLE schema_migrations;")
+      end
       assert_nothing_raised do
         ActiveRecord::Migrator.migrate(MIGRATIONS_ROOT + "/valid", 1)
       end
@@ -1219,6 +1358,31 @@ if ActiveRecord::Base.connection.supports_migrations?
 
       ActiveRecord::Migrator.rollback(MIGRATIONS_ROOT + "/valid")
       assert_equal(0, ActiveRecord::Migrator.current_version)
+    end
+
+    def test_migrator_forward
+      ActiveRecord::Migrator.migrate(MIGRATIONS_ROOT + "/valid", 1)
+      assert_equal(1, ActiveRecord::Migrator.current_version)
+
+      ActiveRecord::Migrator.forward(MIGRATIONS_ROOT + "/valid", 2)
+      assert_equal(3, ActiveRecord::Migrator.current_version)
+
+      ActiveRecord::Migrator.forward(MIGRATIONS_ROOT + "/valid")
+      assert_equal(3, ActiveRecord::Migrator.current_version)
+    end
+
+    def test_get_all_versions
+      ActiveRecord::Migrator.migrate(MIGRATIONS_ROOT + "/valid")
+      assert_equal([1,2,3], ActiveRecord::Migrator.get_all_versions)
+
+      ActiveRecord::Migrator.rollback(MIGRATIONS_ROOT + "/valid")
+      assert_equal([1,2], ActiveRecord::Migrator.get_all_versions)
+
+      ActiveRecord::Migrator.rollback(MIGRATIONS_ROOT + "/valid")
+      assert_equal([1], ActiveRecord::Migrator.get_all_versions)
+
+      ActiveRecord::Migrator.rollback(MIGRATIONS_ROOT + "/valid")
+      assert_equal([], ActiveRecord::Migrator.get_all_versions)
     end
 
     def test_schema_migrations_table_name
@@ -1295,7 +1459,7 @@ if ActiveRecord::Base.connection.supports_migrations?
       columns = Person.connection.columns(:binary_testings)
       data_column = columns.detect { |c| c.name == "data" }
 
-      if current_adapter?(:MysqlAdapter)
+      if current_adapter?(:MysqlAdapter) or current_adapter?(:Mysql2Adapter)
         assert_equal '', data_column.default
       else
         assert_nil data_column.default
@@ -1326,8 +1490,8 @@ if ActiveRecord::Base.connection.supports_migrations?
       return unless current_adapter? :OracleAdapter
 
       # table name is 29 chars, the standard sequence name will
-      # be 33 chars and fail
-      assert_raise(ActiveRecord::StatementInvalid) do
+      # be 33 chars and should be shortened
+      assert_nothing_raised do
         begin
           Person.connection.create_table :table_with_name_thats_just_ok do |t|
             t.column :foo, :string, :null => false
@@ -1444,6 +1608,62 @@ if ActiveRecord::Base.connection.supports_migrations?
 
   end # SexyMigrationsTest
 
+  class MigrationLoggerTest < ActiveRecord::TestCase
+    def setup
+      Object.send(:remove_const, :InnocentJointable)
+    end
+
+    def test_migration_should_be_run_without_logger
+      previous_logger = ActiveRecord::Base.logger
+      ActiveRecord::Base.logger = nil
+      assert_nothing_raised do
+        ActiveRecord::Migrator.migrate(MIGRATIONS_ROOT + "/valid")
+      end
+    ensure
+      ActiveRecord::Base.logger = previous_logger
+    end
+  end
+
+  class InterleavedMigrationsTest < ActiveRecord::TestCase
+    def setup
+      Object.send(:remove_const, :PeopleHaveLastNames)
+    end
+
+    def test_migrator_interleaved_migrations
+      ActiveRecord::Migrator.up(MIGRATIONS_ROOT + "/interleaved/pass_1")
+
+      assert_nothing_raised do
+        ActiveRecord::Migrator.up(MIGRATIONS_ROOT + "/interleaved/pass_2")
+      end
+
+      Person.reset_column_information
+      assert Person.column_methods_hash.include?(:last_name)
+
+      Object.send(:remove_const, :PeopleHaveLastNames)
+      Object.send(:remove_const, :InnocentJointable)
+      assert_nothing_raised do
+        ActiveRecord::Migrator.down(MIGRATIONS_ROOT + "/interleaved/pass_3")
+      end
+    end
+  end
+
+  class ReservedWordsMigrationTest < ActiveRecord::TestCase
+    def test_drop_index_from_table_named_values
+      connection = Person.connection
+      connection.create_table :values, :force => true do |t|
+        t.integer :value
+      end
+
+      assert_nothing_raised do
+        connection.add_index :values, :value
+        connection.remove_index :values, :column => :value
+      end
+
+      connection.drop_table :values rescue nil
+    end
+  end
+
+
   class ChangeTableMigrationsTest < ActiveRecord::TestCase
     def setup
       @connection = Person.connection
@@ -1532,14 +1752,18 @@ if ActiveRecord::Base.connection.supports_migrations?
     def string_column
       if current_adapter?(:PostgreSQLAdapter)
         "character varying(255)"
+      elsif current_adapter?(:OracleAdapter)
+        'VARCHAR2(255)'
       else
         'varchar(255)'
       end
     end
 
     def integer_column
-      if current_adapter?(:MysqlAdapter)
+      if current_adapter?(:MysqlAdapter) or current_adapter?(:Mysql2Adapter)
         'int(11)'
+      elsif current_adapter?(:OracleAdapter)
+        'NUMBER(38)'
       else
         'integer'
       end
@@ -1586,6 +1810,20 @@ if ActiveRecord::Base.connection.supports_migrations?
       with_change_table do |t|
         @connection.expects(:add_index).with(:delete_me, :bar, {:unique => true})
         t.index :bar, :unique => true
+      end
+    end
+
+    def test_index_exists
+      with_change_table do |t|
+        @connection.expects(:index_exists?).with(:delete_me, :bar, {})
+        t.index_exists?(:bar)
+      end
+    end
+
+    def test_index_exists_with_options
+      with_change_table do |t|
+        @connection.expects(:index_exists?).with(:delete_me, :bar, {:unique => true})
+        t.index_exists?(:bar, :unique => true)
       end
     end
 

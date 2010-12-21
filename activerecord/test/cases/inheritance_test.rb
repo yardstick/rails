@@ -14,6 +14,20 @@ class InheritanceTest < ActiveRecord::TestCase
     ActiveRecord::Base.store_full_sti_class = old
   end
 
+  def test_class_with_blank_sti_name
+    company = Company.find(:first)
+    company = company.clone
+    company.extend(Module.new {
+      def read_attribute(name)
+        return '  ' if name == 'type'
+        super
+      end
+    })
+    company.save!
+    company = Company.find(:all).find { |x| x.id == company.id }
+    assert_equal '  ', company.type
+  end
+
   def test_class_without_store_full_sti_class_returns_demodulized_name
     old = ActiveRecord::Base.store_full_sti_class
     ActiveRecord::Base.store_full_sti_class = false
@@ -30,7 +44,7 @@ class InheritanceTest < ActiveRecord::TestCase
   ensure
     ActiveRecord::Base.store_full_sti_class = old
   end
-  
+
   def test_should_store_full_class_name_with_store_full_sti_class_option_enabled
     old = ActiveRecord::Base.store_full_sti_class
     ActiveRecord::Base.store_full_sti_class = true
@@ -39,7 +53,7 @@ class InheritanceTest < ActiveRecord::TestCase
   ensure
     ActiveRecord::Base.store_full_sti_class = old
   end
-  
+
   def test_different_namespace_subclass_should_load_correctly_with_store_full_sti_class_option
     old = ActiveRecord::Base.store_full_sti_class
     ActiveRecord::Base.store_full_sti_class = true
@@ -72,10 +86,10 @@ class InheritanceTest < ActiveRecord::TestCase
   end
 
   def test_inheritance_find
-    assert Company.find(1).kind_of?(Firm), "37signals should be a firm"
-    assert Firm.find(1).kind_of?(Firm), "37signals should be a firm"
-    assert Company.find(2).kind_of?(Client), "Summit should be a client"
-    assert Client.find(2).kind_of?(Client), "Summit should be a client"
+    assert_kind_of Firm, Company.find(1), "37signals should be a firm"
+    assert_kind_of Firm, Firm.find(1), "37signals should be a firm"
+    assert_kind_of Client, Company.find(2), "Summit should be a client"
+    assert_kind_of Client, Client.find(2), "Summit should be a client"
   end
 
   def test_alt_inheritance_find
@@ -86,8 +100,8 @@ class InheritanceTest < ActiveRecord::TestCase
 
   def test_inheritance_find_all
     companies = Company.find(:all, :order => 'id')
-    assert companies[0].kind_of?(Firm), "37signals should be a firm"
-    assert companies[1].kind_of?(Client), "Summit should be a client"
+    assert_kind_of Firm, companies[0], "37signals should be a firm"
+    assert_kind_of Client, companies[1], "Summit should be a client"
   end
 
   def test_alt_inheritance_find_all
@@ -102,7 +116,7 @@ class InheritanceTest < ActiveRecord::TestCase
     firm.save
 
     next_angle = Company.find(firm.id)
-    assert next_angle.kind_of?(Firm), "Next Angle should be a firm"
+    assert_kind_of Firm, next_angle, "Next Angle should be a firm"
   end
 
   def test_alt_inheritance_save
@@ -112,9 +126,9 @@ class InheritanceTest < ActiveRecord::TestCase
   end
 
   def test_inheritance_condition
-    assert_equal 9, Company.count
+    assert_equal 10, Company.count
     assert_equal 2, Firm.count
-    assert_equal 3, Client.count
+    assert_equal 4, Client.count
   end
 
   def test_alt_inheritance_condition
@@ -137,7 +151,8 @@ class InheritanceTest < ActiveRecord::TestCase
   def test_update_all_within_inheritance
     Client.update_all "name = 'I am a client'"
     assert_equal "I am a client", Client.find(:all).first.name
-    assert_equal "37signals", Firm.find(:all).first.name
+    # Order by added as otherwise Oracle tests were failing because of different order of results
+    assert_equal "37signals", Firm.find(:all, :order => "id").first.name
   end
 
   def test_alt_update_all_within_inheritance
@@ -172,7 +187,7 @@ class InheritanceTest < ActiveRecord::TestCase
 
   def test_complex_inheritance
     very_special_client = VerySpecialClient.create("name" => "veryspecial")
-    assert_equal very_special_client, VerySpecialClient.find(:first, :conditions => "name = 'veryspecial'")
+    assert_equal very_special_client, VerySpecialClient.where("name = 'veryspecial'").first
     assert_equal very_special_client, SpecialClient.find(:first, :conditions => "name = 'veryspecial'")
     assert_equal very_special_client, Company.find(:first, :conditions => "name = 'veryspecial'")
     assert_equal very_special_client, Client.find(:first, :conditions => "name = 'veryspecial'")
@@ -240,6 +255,7 @@ class InheritanceComputeTypeTest < ActiveRecord::TestCase
   end
 
   def test_instantiation_doesnt_try_to_require_corresponding_file
+    ActiveRecord::Base.store_full_sti_class = false
     foo = Firm.find(:first).clone
     foo.ruby_type = foo.type = 'FirmOnTheFly'
     foo.save!
@@ -258,5 +274,7 @@ class InheritanceComputeTypeTest < ActiveRecord::TestCase
     # And instantiate will find the existing constant rather than trying
     # to require firm_on_the_fly.
     assert_nothing_raised { assert_kind_of Firm::FirmOnTheFly, Firm.find(foo.id) }
+  ensure
+    ActiveRecord::Base.store_full_sti_class = true
   end
 end

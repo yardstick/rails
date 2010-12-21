@@ -1,4 +1,5 @@
 require 'abstract_unit'
+require 'active_support/time'
 
 class DateExtCalculationsTest < ActiveSupport::TestCase
   def test_to_s
@@ -19,6 +20,13 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
   def test_to_time
     assert_equal Time.local(2005, 2, 21), Date.new(2005, 2, 21).to_time
     assert_equal Time.local_time(2039, 2, 21), Date.new(2039, 2, 21).to_time
+    silence_warnings do
+      0.upto(138) do |year|
+        [:utc, :local].each do |format|
+          assert_equal year, Date.new(year).to_time(format).year
+        end
+      end
+    end
   end
 
   def test_to_datetime
@@ -49,6 +57,10 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2005,11,28), Date.new(2005,12,04).beginning_of_week #sunday
   end
 
+  def test_beginning_of_week_in_calendar_reform
+    assert_equal Date.new(1582,10,1), Date.new(1582,10,15).beginning_of_week #friday
+  end
+
   def test_beginning_of_month
     assert_equal Date.new(2005,2,1), Date.new(2005,2,22).beginning_of_month
   end
@@ -71,6 +83,10 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2008,3,2), Date.new(2008,3,02).end_of_week #sunday
   end
 
+  def test_end_of_week_in_calendar_reform
+    assert_equal Date.new(1582,10,17), Date.new(1582,10,4).end_of_week #thursday
+  end
+
   def test_end_of_quarter
     assert_equal Date.new(2008,3,31),  Date.new(2008,2,15).end_of_quarter
     assert_equal Date.new(2008,3,31),  Date.new(2008,3,31).end_of_quarter
@@ -88,7 +104,6 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2005,3,31), Date.new(2005,3,20).end_of_month
     assert_equal Date.new(2005,2,28), Date.new(2005,2,20).end_of_month
     assert_equal Date.new(2005,4,30), Date.new(2005,4,20).end_of_month
-
   end
 
   def test_beginning_of_year
@@ -130,16 +145,28 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2005,2,28), Date.new(2004,2,29).years_since(1) # 1 year since leap day
   end
 
-  def test_last_year_is_deprecated
-    assert_deprecated { Date.today.last_year }
-  end
-
   def test_prev_year
     assert_equal Date.new(2004,6,5),  Date.new(2005,6,5).prev_year
   end
 
+  def test_prev_year_in_leap_years
+    assert_equal Date.new(1999,2,28), Date.new(2000,2,29).prev_year
+  end
+
+  def test_prev_year_in_calendar_reform
+    assert_equal Date.new(1582,10,4), Date.new(1583,10,14).prev_year
+  end
+
   def test_next_year
     assert_equal Date.new(2006,6,5), Date.new(2005,6,5).next_year
+  end
+
+  def test_next_year_in_leap_years
+    assert_equal Date.new(2001,2,28), Date.new(2000,2,29).next_year
+  end
+
+  def test_next_year_in_calendar_reform
+    assert_equal Date.new(1582,10,4), Date.new(1581,10,10).next_year
   end
 
   def test_yesterday
@@ -147,9 +174,17 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2005,2,28), Date.new(2005,3,2).yesterday.yesterday
   end
 
+  def test_yesterday_in_calendar_reform
+    assert_equal Date.new(1582,10,4), Date.new(1582,10,15).yesterday
+  end
+
   def test_tomorrow
     assert_equal Date.new(2005,2,23), Date.new(2005,2,22).tomorrow
     assert_equal Date.new(2005,3,2),  Date.new(2005,2,28).tomorrow.tomorrow
+  end
+
+  def test_tomorrow_in_calendar_reform
+    assert_equal Date.new(1582,10,15), Date.new(1582,10,4).tomorrow
   end
 
   def test_advance
@@ -163,6 +198,27 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2005,2,28), Date.new(2004,2,29).advance(:years => 1) #leap day plus one year
   end
 
+  def test_advance_does_first_years_and_then_days
+    assert_equal Date.new(2012, 2, 29), Date.new(2011, 2, 28).advance(:years => 1, :days => 1)
+    # If day was done first we would jump to 2012-03-01 instead.
+  end
+
+  def test_advance_does_first_months_and_then_days
+    assert_equal Date.new(2010, 3, 29), Date.new(2010, 2, 28).advance(:months => 1, :days => 1)
+    # If day was done first we would jump to 2010-04-01 instead.
+  end
+
+  def test_advance_in_calendar_reform
+    assert_equal Date.new(1582,10,15), Date.new(1582,10,4).advance(:days => 1)
+    assert_equal Date.new(1582,10,4), Date.new(1582,10,15).advance(:days => -1)
+    5.upto(14) do |day|
+      assert_equal Date.new(1582,10,4), Date.new(1582,9,day).advance(:months => 1)
+      assert_equal Date.new(1582,10,4), Date.new(1582,11,day).advance(:months => -1)
+      assert_equal Date.new(1582,10,4), Date.new(1581,10,day).advance(:years => 1)
+      assert_equal Date.new(1582,10,4), Date.new(1583,10,day).advance(:years => -1)
+    end
+  end
+
   def test_next_week
     assert_equal Date.new(2005,2,28), Date.new(2005,2,22).next_week
     assert_equal Date.new(2005,3,4), Date.new(2005,2,22).next_week(:friday)
@@ -170,12 +226,13 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
     assert_equal Date.new(2006,11,1), Date.new(2006,10,23).next_week(:wednesday)
   end
 
-  def test_next_month_on_31st
-    assert_equal Date.new(2005, 9, 30), Date.new(2005, 8, 31).next_month
+  def test_next_week_in_calendar_reform
+    assert_equal Date.new(1582,10,15), Date.new(1582,9,30).next_week(:friday)
+    assert_equal Date.new(1582,10,18), Date.new(1582,10,4).next_week
   end
 
-  def test_last_month_is_deprecated
-    assert_deprecated { Date.today.last_month }
+  def test_next_month_on_31st
+    assert_equal Date.new(2005, 9, 30), Date.new(2005, 8, 31).next_month
   end
 
   def test_prev_month_on_31st
@@ -183,27 +240,103 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
   end
 
   def test_yesterday_constructor
-    assert_equal Date.today - 1, Date.yesterday
+    assert_equal Date.current - 1, Date.yesterday
+  end
+
+  def test_yesterday_constructor_when_zone_default_is_not_set
+    with_env_tz 'UTC' do
+      with_tz_default do
+        Time.stubs(:now).returns Time.local(2000, 1, 1)
+        assert_equal Date.new(1999, 12, 31), Date.yesterday
+      end
+    end
+  end
+
+  def test_yesterday_constructor_when_zone_default_is_set
+    with_env_tz 'UTC' do
+      with_tz_default ActiveSupport::TimeZone['Eastern Time (US & Canada)'] do # UTC -5
+        Time.stubs(:now).returns Time.local(2000, 1, 1)
+        assert_equal Date.new(1999, 12, 30), Date.yesterday
+      end
+    end
   end
 
   def test_tomorrow_constructor
-    assert_equal Date.today + 1, Date.tomorrow
+    assert_equal Date.current + 1, Date.tomorrow
+  end
+
+  def test_tomorrow_constructor_when_zone_default_is_not_set
+    with_env_tz 'UTC' do
+      with_tz_default do
+        Time.stubs(:now).returns Time.local(1999, 12, 31)
+        assert_equal Date.new(2000, 1, 1), Date.tomorrow
+      end
+    end
+  end
+
+  def test_tomorrow_constructor_when_zone_default_is_set
+    with_env_tz 'UTC' do
+      with_tz_default ActiveSupport::TimeZone['Europe/Paris'] do # UTC +1
+        Time.stubs(:now).returns Time.local(1999, 12, 31, 23)
+        assert_equal Date.new(2000, 1, 2), Date.tomorrow
+      end
+    end
   end
 
   def test_since
     assert_equal Time.local(2005,2,21,0,0,45), Date.new(2005,2,21).since(45)
   end
 
+  def test_since_when_zone_default_is_set
+    zone = ActiveSupport::TimeZone['Eastern Time (US & Canada)']
+    with_env_tz 'UTC' do
+      with_tz_default zone do
+        assert_equal zone.local(2005,2,21,0,0,45), Date.new(2005,2,21).since(45)
+        assert_equal zone, Date.new(2005,2,21).since(45).time_zone
+      end
+    end
+  end
+
   def test_ago
     assert_equal Time.local(2005,2,20,23,59,15), Date.new(2005,2,21).ago(45)
+  end
+
+  def test_ago_when_zone_default_is_set
+    zone = ActiveSupport::TimeZone['Eastern Time (US & Canada)']
+    with_env_tz 'UTC' do
+      with_tz_default zone do
+        assert_equal zone.local(2005,2,20,23,59,15), Date.new(2005,2,21).ago(45)
+        assert_equal zone, Date.new(2005,2,21).ago(45).time_zone
+      end
+    end
   end
 
   def test_beginning_of_day
     assert_equal Time.local(2005,2,21,0,0,0), Date.new(2005,2,21).beginning_of_day
   end
 
+  def test_beginning_of_day_when_zone_default_is_set
+    zone = ActiveSupport::TimeZone['Eastern Time (US & Canada)']
+    with_env_tz 'UTC' do
+      with_tz_default zone do
+        assert_equal zone.local(2005,2,21,0,0,0), Date.new(2005,2,21).beginning_of_day
+        assert_equal zone, Date.new(2005,2,21).beginning_of_day.time_zone
+      end
+    end
+  end
+
   def test_end_of_day
     assert_equal Time.local(2005,2,21,23,59,59,999999.999), Date.new(2005,2,21).end_of_day
+  end
+
+  def test_end_of_day_when_zone_default_is_set
+    zone = ActiveSupport::TimeZone['Eastern Time (US & Canada)']
+    with_env_tz 'UTC' do
+      with_tz_default zone do
+        assert_equal zone.local(2005,2,21,23,59,59,999999.999), Date.new(2005,2,21).end_of_day
+        assert_equal zone, Date.new(2005,2,21).end_of_day.time_zone
+      end
+    end
   end
 
   def test_xmlschema
@@ -214,6 +347,15 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
       if ::DateTime === Date.new(1880, 6, 28).to_time
         assert_match(/^1880-02-28T00:00:00-05:?00$/, Date.new(1880, 2, 28).xmlschema)
         assert_match(/^1880-06-28T00:00:00-05:?00$/, Date.new(1880, 6, 28).xmlschema) # DateTimes aren't aware of DST rules
+      end
+    end
+  end
+
+  def test_xmlschema_when_zone_default_is_set
+    with_env_tz 'UTC' do
+      with_tz_default ActiveSupport::TimeZone['Eastern Time (US & Canada)'] do # UTC -5
+        assert_match(/^1980-02-28T00:00:00-05:?00$/, Date.new(1980, 2, 28).xmlschema)
+        assert_match(/^1980-06-28T00:00:00-04:?00$/, Date.new(1980, 6, 28).xmlschema)
       end
     end
   end
@@ -270,6 +412,14 @@ class DateExtCalculationsTest < ActiveSupport::TestCase
       yield
     ensure
       old_tz ? ENV['TZ'] = old_tz : ENV.delete('TZ')
+    end
+
+    def with_tz_default(tz = nil)
+      old_tz = Time.zone_default
+      Time.zone_default = tz
+      yield
+    ensure
+      Time.zone_default = old_tz
     end
 end
 

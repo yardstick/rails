@@ -1,3 +1,4 @@
+require 'rbconfig'
 module Kernel
   # Sets $VERBOSE to nil for the duration of the block and back to its original value afterwards.
   #
@@ -7,15 +8,17 @@ module Kernel
   #
   #   noisy_call # warning voiced
   def silence_warnings
-    old_verbose, $VERBOSE = $VERBOSE, nil
-    yield
-  ensure
-    $VERBOSE = old_verbose
+    with_warnings(nil) { yield }
   end
 
   # Sets $VERBOSE to true for the duration of the block and back to its original value afterwards.
   def enable_warnings
-    old_verbose, $VERBOSE = $VERBOSE, true
+    with_warnings(true) { yield }
+  end
+
+  # Sets $VERBOSE for the duration of the block and back to its original value afterwards.
+  def with_warnings(flag)
+    old_verbose, $VERBOSE = $VERBOSE, flag
     yield
   ensure
     $VERBOSE = old_verbose
@@ -35,7 +38,7 @@ module Kernel
   #   puts 'But this will'
   def silence_stream(stream)
     old_stream = stream.dup
-    stream.reopen(RUBY_PLATFORM =~ /(:?mswin|mingw)/ ? 'NUL:' : '/dev/null')
+    stream.reopen(RbConfig::CONFIG['host_os'] =~ /mswin|mingw/ ? 'NUL:' : '/dev/null')
     stream.sync = true
     yield
   ensure

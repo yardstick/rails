@@ -6,20 +6,20 @@ require 'models/company_in_module'
 require 'models/subscriber'
 require 'models/ship'
 require 'models/pirate'
+require 'models/price_estimate'
 
 class ReflectionTest < ActiveRecord::TestCase
   include ActiveRecord::Reflection
 
-  fixtures :topics, :customers, :companies, :subscribers
+  fixtures :topics, :customers, :companies, :subscribers, :price_estimates
 
   def setup
     @first = Topic.find(1)
   end
 
-  def test_column_null_not_null
-    subscriber = Subscriber.find(:first)
-    assert subscriber.column_for_attribute("name").null
-    assert !subscriber.column_for_attribute("nick").null
+  def test_human_name
+    assert_equal "Price estimate", PriceEstimate.model_name.human
+    assert_equal "Subscriber", Subscriber.model_name.human
   end
 
   def test_read_attribute_names
@@ -134,6 +134,8 @@ class ReflectionTest < ActiveRecord::TestCase
   end
 
   def test_association_reflection_in_modules
+    ActiveRecord::Base.store_full_sti_class = false
+
     assert_reflection MyApplication::Business::Firm,
       :clients_of_firm,
       :klass      => MyApplication::Business::Client,
@@ -169,12 +171,14 @@ class ReflectionTest < ActiveRecord::TestCase
       :klass      => MyApplication::Billing::Nested::Firm,
       :class_name => 'Nested::Firm',
       :table_name => 'companies'
+  ensure
+    ActiveRecord::Base.store_full_sti_class = true
   end
 
   def test_reflection_of_all_associations
     # FIXME these assertions bust a lot
-    assert_equal 36, Firm.reflect_on_all_associations.size
-    assert_equal 26, Firm.reflect_on_all_associations(:has_many).size
+    assert_equal 37, Firm.reflect_on_all_associations.size
+    assert_equal 27, Firm.reflect_on_all_associations(:has_many).size
     assert_equal 10, Firm.reflect_on_all_associations(:has_one).size
     assert_equal 0, Firm.reflect_on_all_associations(:belongs_to).size
   end

@@ -43,7 +43,7 @@ class Developer < ActiveRecord::Base
 
   has_many :audit_logs
 
-  named_scope :jamises, :conditions => {:name => 'Jamis'}
+  scope :jamises, :conditions => {:name => 'Jamis'}
 
   validates_inclusion_of :salary, :in => 50000..200000
   validates_length_of    :name, :within => 3..20
@@ -54,6 +54,12 @@ class Developer < ActiveRecord::Base
 
   def log=(message)
     audit_logs.build :message => message
+  end
+
+  def self.all_johns
+    self.with_exclusive_scope :find => where(:name => 'John') do
+      self.all
+    end
   end
 end
 
@@ -81,7 +87,8 @@ end
 class DeveloperOrderedBySalary < ActiveRecord::Base
   self.table_name = 'developers'
   default_scope :order => 'salary DESC'
-  named_scope :by_name, :order => 'name DESC'
+  scope :by_name, order('name DESC')
+  scope :reordered_by_name, reorder('name')
 
   def self.all_ordered_by_name
     with_scope(:find => { :order => 'name DESC' }) do
@@ -98,4 +105,9 @@ end
 class DeveloperCalledJamis < ActiveRecord::Base
   self.table_name = 'developers'
   default_scope :conditions => { :name => 'Jamis' }
+end
+
+class PoorDeveloperCalledJamis < ActiveRecord::Base
+  self.table_name = 'developers'
+  default_scope :conditions => { :name => 'Jamis', :salary => 50000 }
 end

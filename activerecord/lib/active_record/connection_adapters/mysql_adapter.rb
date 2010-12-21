@@ -1,47 +1,7 @@
 require 'active_record/connection_adapters/abstract_adapter'
+require 'active_support/core_ext/kernel/requires'
+require 'active_support/core_ext/object/blank'
 require 'set'
-
-module MysqlCompat #:nodoc:
-  # add all_hashes method to standard mysql-c bindings or pure ruby version
-  def self.define_all_hashes_method!
-    raise 'Mysql not loaded' unless defined?(::Mysql)
-
-    target = defined?(Mysql::Result) ? Mysql::Result : MysqlRes
-    return if target.instance_methods.include?('all_hashes') ||
-              target.instance_methods.include?(:all_hashes)
-
-    # Ruby driver has a version string and returns null values in each_hash
-    # C driver >= 2.7 returns null values in each_hash
-    if Mysql.const_defined?(:VERSION) && (Mysql::VERSION.is_a?(String) || Mysql::VERSION >= 20700)
-      target.class_eval <<-'end_eval'
-      def all_hashes                     # def all_hashes
-        rows = []                        #   rows = []
-        each_hash { |row| rows << row }  #   each_hash { |row| rows << row }
-        rows                             #   rows
-      end                                # end
-      end_eval
-
-    # adapters before 2.7 don't have a version constant
-    # and don't return null values in each_hash
-    else
-      target.class_eval <<-'end_eval'
-      def all_hashes                                            # def all_hashes
-        rows = []                                               #   rows = []
-        all_fields = fetch_fields.inject({}) { |fields, f|      #   all_fields = fetch_fields.inject({}) { |fields, f|
-          fields[f.name] = nil; fields                          #     fields[f.name] = nil; fields
-        }                                                       #   }
-        each_hash { |row| rows << all_fields.dup.update(row) }  #   each_hash { |row| rows << all_fields.dup.update(row) }
-        rows                                                    #   rows
-      end                                                       # end
-      end_eval
-    end
-
-    unless target.instance_methods.include?('all_hashes') ||
-           target.instance_methods.include?(:all_hashes)
-      raise "Failed to defined #{target.name}#all_hashes method. Mysql::VERSION = #{Mysql::VERSION.inspect}"
-    end
-  end
-end
 
 module ActiveRecord
   class Base
@@ -55,22 +15,23 @@ module ActiveRecord
       password = config[:password].to_s
       database = config[:database]
 
-      # Require the MySQL driver and define Mysql::Result.all_hashes
       unless defined? Mysql
         begin
-          require_library_or_gem('mysql')
+          require 'mysql'
         rescue LoadError
-          $stderr.puts '!!! The bundled mysql.rb driver has been removed from Rails 2.2. Please install the mysql gem and try again: gem install mysql.'
-          raise
+          raise "!!! Missing the mysql2 gem. Add it to your Gemfile: gem 'mysql2'"
+        end
+
+        unless defined?(Mysql::Result) && Mysql::Result.method_defined?(:each_hash)
+          raise "!!! Outdated mysql gem. Upgrade to 2.8.1 or later. In your Gemfile: gem 'mysql', '2.8.1'. Or use gem 'mysql2'"
         end
       end
-
-      MysqlCompat.define_all_hashes_method!
 
       mysql = Mysql.init
       mysql.ssl_set(config[:sslkey], config[:sslcert], config[:sslca], config[:sslcapath], config[:sslcipher]) if config[:sslca] || config[:sslkey]
 
       default_flags = Mysql.const_defined?(:CLIENT_MULTI_RESULTS) ? Mysql::CLIENT_MULTI_RESULTS : 0
+      default_flags |= Mysql::CLIENT_FOUND_ROWS if Mysql.const_defined?(:CLIENT_FOUND_ROWS)
       options = [host, username, password, database, port, socket, default_flags]
       ConnectionAdapters::MysqlAdapter.new(mysql, logger, options, config)
     end
@@ -165,7 +126,7 @@ module ActiveRecord
       # By default, the MysqlAdapter will consider all columns of type <tt>tinyint(1)</tt>
       # as boolean. If you wish to disable this emulation (which was the default
       # behavior in versions 0.13.1 and earlier) you can add the following line
-      # to your environment.rb file:
+      # to your application.rb file:
       #
       #   ActiveRecord::ConnectionAdapters::MysqlAdapter.emulate_booleans = false
       cattr_accessor :emulate_booleans
@@ -210,7 +171,7 @@ module ActiveRecord
       def supports_migrations? #:nodoc:
         true
       end
-      
+
       def supports_primary_key? #:nodoc:
         true
       end
@@ -259,7 +220,7 @@ module ActiveRecord
 
       # REFERENTIAL INTEGRITY ====================================
 
-      def disable_referential_integrity(&block) #:nodoc:
+      def disable_referential_integrity #:nodoc:
         old = select_value("SELECT @@FOREIGN_KEY_CHECKS")
 
         begin
@@ -319,15 +280,16 @@ module ActiveRecord
         rows
       end
 
-      # Executes a SQL query and returns a MySQL::Result object. Note that you have to free the Result object after you're done using it.
+      # Executes an SQL query and returns a MySQL::Result object. Note that you have to free
+      # the Result object after you're done using it.
       def execute(sql, name = nil) #:nodoc:
-        log(sql, name) { @connection.query(sql) }
+        if name == :skip_logging
+          @connection.query(sql)
+        else
+          log(sql, name) { @connection.query(sql) }
+        end
       rescue ActiveRecord::StatementInvalid => exception
-        if exception.message =~ /server has gone away/i
-          warn "Server timed out, retrying"
-          reconnect!
-          retry
-        elsif exception.message.split(":").first =~ /Packets out of order/
+        if exception.message.split(":").first =~ /Packets out of order/
           raise ActiveRecord::StatementInvalid, "'Packets out of order' error was received from the database. Please update your mysql bindings (gem install mysql) and read http://dev.mysql.com/doc/mysql/en/password-hashing.html for more information.  If you're on Windows, use the Instant Rails installer to get the updated mysql bindings."
         else
           raise
@@ -338,6 +300,7 @@ module ActiveRecord
         super sql, name
         id_value || @connection.insert_id
       end
+      alias :create :insert_sql
 
       def update_sql(sql, name = nil) #:nodoc:
         super
@@ -375,16 +338,16 @@ module ActiveRecord
       end
 
       def add_limit_offset!(sql, options) #:nodoc:
-        if limit = options[:limit]
-          limit = sanitize_limit(limit)
-          unless offset = options[:offset]
-            sql << " LIMIT #{limit}"
-          else
-            sql << " LIMIT #{offset.to_i}, #{limit}"
-          end
+        limit, offset = options[:limit], options[:offset]
+        if limit && offset
+          sql << " LIMIT #{offset.to_i}, #{sanitize_limit(limit)}"
+        elsif limit
+          sql << " LIMIT #{sanitize_limit(limit)}"
+        elsif offset
+          sql << " OFFSET #{offset.to_i}"
         end
+        sql
       end
-
 
       # SCHEMA STATEMENTS ========================================
 
@@ -395,10 +358,10 @@ module ActiveRecord
           sql = "SHOW TABLES"
         end
 
-        select_all(sql).inject("") do |structure, table|
+        select_all(sql).map do |table|
           table.delete('Table_type')
-          structure += select_one("SHOW CREATE TABLE #{quote_table_name(table.to_a.first.last)}")["Create Table"] + ";\n\n"
-        end
+          select_one("SHOW CREATE TABLE #{quote_table_name(table.to_a.first.last)}")["Create Table"] + ";\n\n"
+        end.join("")
       end
 
       def recreate_database(name, options = {}) #:nodoc:
@@ -472,7 +435,7 @@ module ActiveRecord
       def columns(table_name, name = nil)#:nodoc:
         sql = "SHOW FIELDS FROM #{quote_table_name(table_name)}"
         columns = []
-        result = execute(sql, name)
+        result = execute(sql, :skip_logging)
         result.each { |field| columns << MysqlColumn.new(field[0], field[4], field[1], field[2] == "YES") }
         result.free
         columns
@@ -606,6 +569,19 @@ module ActiveRecord
           end
         end
 
+        def translate_exception(exception, message)
+          return super unless exception.respond_to?(:errno)
+
+          case exception.errno
+          when 1062
+            RecordNotUnique.new(message, exception)
+          when 1452
+            InvalidForeignKey.new(message, exception)
+          else
+            super
+          end
+        end
+
       private
         def connect
           encoding = @config[:encoding]
@@ -631,17 +607,18 @@ module ActiveRecord
 
         def configure_connection
           encoding = @config[:encoding]
-          execute("SET NAMES '#{encoding}'") if encoding
+          execute("SET NAMES '#{encoding}'", :skip_logging) if encoding
 
           # By default, MySQL 'where id is null' selects the last inserted id.
           # Turn this off. http://dev.rubyonrails.org/ticket/6778
-          execute("SET SQL_AUTO_IS_NULL=0")
+          execute("SET SQL_AUTO_IS_NULL=0", :skip_logging)
         end
 
         def select(sql, name = nil)
           @connection.query_with_result = true
           result = execute(sql, name)
-          rows = result.all_hashes
+          rows = []
+          result.each_hash { |row| rows << row }
           result.free
           @connection.more_results && @connection.next_result    # invoking stored procedures with CLIENT_MULTI_RESULTS requires this to tidy up else connection will be dropped
           rows

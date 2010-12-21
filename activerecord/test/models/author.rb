@@ -35,7 +35,7 @@ class Author < ActiveRecord::Base
   has_many :ordered_uniq_comments, :through => :posts, :source => :comments, :uniq => true, :order => 'comments.id'
   has_many :ordered_uniq_comments_desc, :through => :posts, :source => :comments, :uniq => true, :order => 'comments.id DESC'
   has_many :readonly_comments, :through => :posts, :source => :comments, :readonly => true
-  
+
   has_many :special_posts
   has_many :special_post_comments, :through => :special_posts, :source => :comments
 
@@ -88,22 +88,27 @@ class Author < ActiveRecord::Base
   has_many :tags,     :through => :posts # through has_many :through
   has_many :post_categories, :through => :posts, :source => :categories
 
-  has_many :event_authors
-  has_many :events, :through => :event_authors
-  
   has_one :essay, :primary_key => :name, :as => :writer
 
   belongs_to :author_address, :dependent => :destroy
   belongs_to :author_address_extra, :dependent => :delete, :class_name => "AuthorAddress"
 
-  attr_accessor :post_log
+  scope :relation_include_posts, includes(:posts)
+  scope :relation_include_tags, includes(:tags)
 
-  def after_initialize
+  attr_accessor :post_log
+  after_initialize :set_post_log
+
+  def set_post_log
     @post_log = []
   end
 
   def label
     "#{id}-#{name}"
+  end
+
+  def social
+    %w(twitter github)
   end
 
   validates_presence_of :name
@@ -134,14 +139,11 @@ class AuthorAddress < ActiveRecord::Base
   has_one :author
 
   def self.destroyed_author_address_ids
-    @destroyed_author_address_ids ||= Hash.new { |h,k| h[k] = [] }
+    @destroyed_author_address_ids ||= []
   end
 
   before_destroy do |author_address|
-    if author_address.author
-      AuthorAddress.destroyed_author_address_ids[author_address.author.id] << author_address.id
-    end
-    true
+    AuthorAddress.destroyed_author_address_ids << author_address.id
   end
 end
 

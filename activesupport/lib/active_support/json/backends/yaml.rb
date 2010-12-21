@@ -7,10 +7,13 @@ module ActiveSupport
         ParseError = ::StandardError
         extend self
 
-        # Converts a JSON string into a Ruby object.
+        # Parses a JSON string or IO and converts it into an object
         def decode(json)
+          if json.respond_to?(:read)
+            json = json.read
+          end
           YAML.load(convert_json_to_yaml(json))
-        rescue ArgumentError => e
+        rescue ArgumentError
           raise ParseError, "Invalid JSON string"
         end
 

@@ -20,7 +20,7 @@ In a freshly generated Rails application, +test/performance/browsing_test.rb+ co
 
 <ruby>
 require 'test_helper'
-require 'performance_test_help'
+require 'rails/performance_test_help'
 
 # Profiling results for each test method are written to tmp/performance.
 class BrowsingTest < ActionController::PerformanceTest
@@ -34,17 +34,17 @@ This example is a simple performance test case for profiling a GET request to th
 
 h4. Generating Performance Tests
 
-Rails provides a generator called +performance_test+ for creating new performance tests:
+Rails provides a generator called +test_unit:performance+ for creating new performance tests:
 
 <shell>
-script/generate performance_test homepage
+rails generate test_unit:performance homepage
 </shell>
 
 This generates +homepage_test.rb+ in the +test/performance+ directory:
 
 <ruby>
 require 'test_helper'
-require 'performance_test_help'
+require 'rails/performance_test_help'
 
 class HomepageTest < ActionController::PerformanceTest
   # Replace this with your real tests.
@@ -103,7 +103,7 @@ Here's the performance test for +HomeController#dashboard+ and +PostsController#
 
 <ruby>
 require 'test_helper'
-require 'performance_test_help'
+require 'rails/performance_test_help'
 
 class PostPerformanceTest < ActionController::PerformanceTest
   def setup
@@ -131,7 +131,7 @@ Performance test for +Post+ model:
 
 <ruby>
 require 'test_helper'
-require 'performance_test_help'
+require 'rails/performance_test_help'
 
 class PostModelTest < ActionController::PerformanceTest
   def test_creation
@@ -213,11 +213,11 @@ h4. Understanding the Output
 
 Performance tests generate different outputs inside +tmp/performance+ directory depending on their mode and metric.
 
-h5. Benchmarking
+h5(#output-benchmarking). Benchmarking
 
 In benchmarking mode, performance tests generate two types of outputs:
 
-h6. Command Line
+h6(#output-command-line). Command Line
 
 This is the primary form of output in benchmarking mode. Example:
 
@@ -246,19 +246,19 @@ Sample output of +BrowsingTest#test_homepage_wall_time.csv+:
 
 <shell>
 measurement,created_at,app,rails,ruby,platform
-0.00738224999999992,2009-01-08T03:40:29Z,,2.3.0.master.0744148,ruby-1.8.6.110,i686-darwin9.0.0
-0.00755874999999984,2009-01-08T03:46:18Z,,2.3.0.master.0744148,ruby-1.8.6.110,i686-darwin9.0.0
-0.00762099999999993,2009-01-08T03:49:25Z,,2.3.0.master.0744148,ruby-1.8.6.110,i686-darwin9.0.0
-0.00603075000000008,2009-01-08T04:03:29Z,,2.3.0.master.0744148,ruby-1.8.6.111,i686-darwin9.1.0
-0.00619899999999995,2009-01-08T04:03:53Z,,2.3.0.master.0744148,ruby-1.8.6.111,i686-darwin9.1.0
-0.00755449999999991,2009-01-08T04:04:55Z,,2.3.0.master.0744148,ruby-1.8.6.110,i686-darwin9.0.0
-0.00595999999999997,2009-01-08T04:05:06Z,,2.3.0.master.0744148,ruby-1.8.6.111,i686-darwin9.1.0
-0.00740450000000004,2009-01-09T03:54:47Z,,2.3.0.master.859e150,ruby-1.8.6.110,i686-darwin9.0.0
-0.00603150000000008,2009-01-09T03:54:57Z,,2.3.0.master.859e150,ruby-1.8.6.111,i686-darwin9.1.0
-0.00771250000000012,2009-01-09T15:46:03Z,,2.3.0.master.859e150,ruby-1.8.6.110,i686-darwin9.0.0
+0.00738224999999992,2009-01-08T03:40:29Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00755874999999984,2009-01-08T03:46:18Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00762099999999993,2009-01-08T03:49:25Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00603075000000008,2009-01-08T04:03:29Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00619899999999995,2009-01-08T04:03:53Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00755449999999991,2009-01-08T04:04:55Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00595999999999997,2009-01-08T04:05:06Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00740450000000004,2009-01-09T03:54:47Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00603150000000008,2009-01-09T03:54:57Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
+0.00771250000000012,2009-01-09T15:46:03Z,,3.0.0,ruby-1.8.7.249,x86_64-linux
 </shell>
 
-h5. Profiling
+h5(#output-profiling). Profiling
 
 In profiling mode, you can choose from four types of output.
 
@@ -293,7 +293,7 @@ WARNING: Performance test configurability is not yet enabled in Rails. But it wi
 
 h4. Performance Test Environment
 
-Performance tests are run in the +development+ environment. But running performance tests will set the following configuration parameters:
+Performance tests are run in the +test+ environment. But running performance tests will set the following configuration parameters:
 
 <shell>
 ActionController::Base.perform_caching = true
@@ -330,7 +330,7 @@ h5. Apply the Patch
 
 h5. Configure and Install
 
-The following will install ruby in your home directory's +/rubygc+ directory. Make sure to replace +<homedir>+ with a full patch to your actual home directory.
+The following will install ruby in your home directory's +/rubygc+ directory. Make sure to replace +&lt;homedir&gt;+ with a full patch to your actual home directory.
 
 <shell>
 [lifo@null ruby-version]$ ./configure --prefix=/<homedir>/rubygc
@@ -381,41 +381,41 @@ h4. +benchmarker+
 Usage:
 
 <shell>
-$ script/performance/benchmarker [times] 'Person.expensive_way' 'Person.another_expensive_way' ...
+$ rails benchmarker [times] 'Person.expensive_way' 'Person.another_expensive_way' ...
 </shell>
 
 Examples:
 
 <shell>
-$ script/performance/benchmarker 10 'Item.all' 'CouchItem.all'
+$ rails benchmarker 10 'Item.all' 'CouchItem.all'
 </shell>
 
 If the +[times]+ argument is omitted, supplied methods are run just once:
 
 <shell>
-$ script/performance/benchmarker 'Item.first' 'Item.last'
+$ rails benchmarker 'Item.first' 'Item.last'
 </shell>
 
 h4. +profiler+
 
-+profiler+ is a wrapper around http://ruby-prof.rubyforge.org/[ruby-prof] gem.
++profiler+ is a wrapper around the "ruby-prof":http://ruby-prof.rubyforge.org gem.
 
 Usage:
 
 <shell>
-$ script/performance/profiler 'Person.expensive_method(10)' [times] [flat|graph|graph_html]
+$ rails profiler 'Person.expensive_method(10)' [times] [flat|graph|graph_html]
 </shell>
 
 Examples:
 
 <shell>
-$ script/performance/profiler 'Item.all'
+$ rails profiler 'Item.all'
 </shell>
 
 This will profile +Item.all+ in +RubyProf::WALL_TIME+ measure mode. By default, it prints flat output to the shell.
 
 <shell>
-$ script/performance/profiler 'Item.all' 10 graph
+$ rails profiler 'Item.all' 10 graph
 </shell>
 
 This will profile +10.times { Item.all }+ with +RubyProf::WALL_TIME+ measure mode and print graph output to the shell.
@@ -423,7 +423,7 @@ This will profile +10.times { Item.all }+ with +RubyProf::WALL_TIME+ measure mod
 If you want to store the output in a file:
 
 <shell>
-$ script/performance/profiler 'Item.all' 10 graph 2> graph.txt
+$ rails profiler 'Item.all' 10 graph 2> graph.txt
 </shell>
 
 h3. Helper Methods
@@ -517,15 +517,12 @@ h4. Tutorials and Documentation
 
 h3. Commercial Products
 
-Rails has been lucky to have three startups dedicated to Rails specific performance tools:
+Rails has been lucky to have two startups dedicated to Rails specific performance tools:
 
 * "New Relic":http://www.newrelic.com
-* "Fiveruns":http://www.fiveruns.com
 * "Scout":http://scoutapp.com
 
 h3. Changelog
-
-"Lighthouse ticket":http://rails.lighthouseapp.com/projects/16213-rails-guides/tickets/4
 
 * January 9, 2009: Complete rewrite by "Pratik":credits.html#lifo
 * September 6, 2008: Initial version by Matthew Bergman

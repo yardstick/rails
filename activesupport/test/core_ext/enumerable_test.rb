@@ -1,4 +1,6 @@
 require 'abstract_unit'
+require 'active_support/core_ext/array'
+require 'active_support/core_ext/enumerable'
 
 Payment = Struct.new(:price)
 class SummablePayment < Payment
@@ -59,7 +61,11 @@ class EnumerableTests < Test::Unit::TestCase
   end
 
   def test_enumerable_sums
+    assert_equal 20, (1..4).sum { |i| i * 2 }
     assert_equal 10, (1..4).sum
+    assert_equal 10, (1..4.5).sum
+    assert_equal 6, (1...4).sum
+    assert_equal 'abc', ('a'..'c').sum
   end
 
   def test_each_with_object
@@ -84,17 +90,6 @@ class EnumerableTests < Test::Unit::TestCase
     assert [ 1, 2, 2 ].many? {|x| x > 1 }
   end
 
-  def test_none
-    assert [].none?
-    assert [nil, false].none?
-    assert ![1].none?
-
-    assert [].none? {|x| x > 1 }
-    assert ![ 2 ].none? {|x| x > 1 }
-    assert ![ 1, 2 ].none? {|x| x > 1 }
-    assert [ 1, 1 ].none? {|x| x > 1 }
-  end
-  
   def test_exclude?
     assert [ 1 ].exclude?(2)
     assert ![ 1 ].exclude?(1)

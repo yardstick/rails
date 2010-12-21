@@ -1,21 +1,20 @@
+require File.expand_path('../../../load_paths', __FILE__)
+
+lib = File.expand_path("#{File.dirname(__FILE__)}/../lib")
+$:.unshift(lib) unless $:.include?('lib') || $:.include?(lib)
+
 require 'rubygems'
 require 'test/unit'
+require 'active_resource'
+require 'active_support'
 require 'active_support/test_case'
 
-$:.unshift File.expand_path('../../lib', __FILE__)
-$:.unshift File.expand_path('../../../activesupport/lib', __FILE__)
-require 'active_resource'
-require 'active_resource/http_mock'
-
-$:.unshift "#{File.dirname(__FILE__)}/../test"
 require 'setter_trap'
 
+require 'logger'
 ActiveResource::Base.logger = Logger.new("#{File.dirname(__FILE__)}/debug.log")
 
-def uses_gem(gem_name, test_name, version = '> 0')
-  gem gem_name.to_s, version
-  require gem_name.to_s
-  yield
+begin
+  require 'ruby-debug'
 rescue LoadError
-  $stderr.puts "Skipping #{test_name} tests. `gem install #{gem_name}` and try again."
 end

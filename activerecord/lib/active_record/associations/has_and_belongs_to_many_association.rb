@@ -1,11 +1,7 @@
 module ActiveRecord
+  # = Active Record Has And Belongs To Many Association
   module Associations
     class HasAndBelongsToManyAssociation < AssociationCollection #:nodoc:
-      def initialize(owner, reflection)
-        super
-        @primary_key_list = {}
-      end
-
       def create(attributes = {})
         create_record(attributes) { |record| insert_record(record) }
       end
@@ -13,14 +9,6 @@ module ActiveRecord
       def create!(attributes = {})
         create_record(attributes) { |record| insert_record(record, true) }
       end
-      
-      def columns
-        @reflection.columns(@reflection.options[:join_table], "#{@reflection.options[:join_table]} Columns")
-      end
-
-      def reset_column_information
-        @reflection.reset_column_information
-      end
 
       def columns
         @reflection.columns(@reflection.options[:join_table], "#{@reflection.options[:join_table]} Columns")
@@ -31,73 +19,52 @@ module ActiveRecord
       end
 
       def has_primary_key?
-        return @has_primary_key unless @has_primary_key.nil?
-        @has_primary_key = (@owner.connection.supports_primary_key? &&
-          @owner.connection.primary_key(@reflection.options[:join_table]))
-      end
-
-      def columns
-        @reflection.columns(@reflection.options[:join_table], "#{@reflection.options[:join_table]} Columns")
-      end
-
-      def reset_column_information
-        @reflection.reset_column_information
-      end
-
-      def has_primary_key?
-        return @has_primary_key unless @has_primary_key.nil?
-        @has_primary_key = (@owner.connection.supports_primary_key? &&
-          @owner.connection.primary_key(@reflection.options[:join_table]))
+        @has_primary_key ||= @owner.connection.supports_primary_key? && @owner.connection.primary_key(@reflection.options[:join_table])
       end
 
       protected
         def construct_find_options!(options)
-          options[:joins]      = @join_sql
+          options[:joins]      = Arel::SqlLiteral.new @join_sql
           options[:readonly]   = finding_with_ambiguous_select?(options[:select] || @reflection.options[:select])
-          options[:select]   ||= (@reflection.options[:select] || '*')
+          options[:select]   ||= (@reflection.options[:select] || Arel::SqlLiteral.new('*'))
         end
-        
+
         def count_records
           load_target.size
         end
 
         def insert_record(record, force = true, validate = true)
-          if has_primary_key?
-            raise ActiveRecord::ConfigurationError,
-              "Primary key is not allowed in a has_and_belongs_to_many join table (#{@reflection.options[:join_table]})."
-          end
-
           if record.new_record?
             if force
               record.save!
             else
-              return false unless record.save(validate)
+              return false unless record.save(:validate => validate)
             end
           end
 
           if @reflection.options[:insert_sql]
             @owner.connection.insert(interpolate_sql(@reflection.options[:insert_sql], record))
           else
-            attributes = columns.inject({}) do |attrs, column|
-              case column.name.to_s
+            relation   = Arel::Table.new(@reflection.options[:join_table])
+            timestamps = record_timestamp_columns(record)
+            timezone   = record.send(:current_time_from_proper_timezone) if timestamps.any?
+
+            attributes = Hash[columns.map do |column|
+              name = column.name
+              value = case name.to_s
                 when @reflection.primary_key_name.to_s
-                  attrs[column.name] = owner_quoted_id
+                  @owner.id
                 when @reflection.association_foreign_key.to_s
-                  attrs[column.name] = record.quoted_id
+                  record.id
+                when *timestamps
+                  timezone
                 else
-                  if record.has_attribute?(column.name)
-                    value = @owner.send(:quote_value, record[column.name], column)
-                    attrs[column.name] = value unless value.nil?
-                  end
+                  @owner.send(:quote_value, record[name], column) if record.has_attribute?(name)
               end
-              attrs
-            end
+              [relation[name], value] unless value.nil?
+            end]
 
-            sql =
-              "INSERT INTO #{@owner.connection.quote_table_name @reflection.options[:join_table]} (#{@owner.send(:quoted_column_names, attributes).join(', ')}) " +
-              "VALUES (#{attributes.values.join(', ')})"
-
-            @owner.connection.insert(sql)
+            relation.insert(attributes)
           end
 
           return true
@@ -107,9 +74,10 @@ module ActiveRecord
           if sql = @reflection.options[:delete_sql]
             records.each { |record| @owner.connection.delete(interpolate_sql(sql, record)) }
           else
-            ids = quoted_record_ids(records)
-            sql = "DELETE FROM #{@owner.connection.quote_table_name @reflection.options[:join_table]} WHERE #{@reflection.primary_key_name} = #{owner_quoted_id} AND #{@reflection.association_foreign_key} IN (#{ids})"
-            @owner.connection.delete(sql)
+            relation = Arel::Table.new(@reflection.options[:join_table])
+            relation.where(relation[@reflection.primary_key_name].eq(@owner.id).
+              and(relation[@reflection.association_foreign_key].in(records.map { |x| x.id }.compact))
+            ).delete
           end
         end
 
@@ -123,15 +91,7 @@ module ActiveRecord
 
           @join_sql = "INNER JOIN #{@owner.connection.quote_table_name @reflection.options[:join_table]} ON #{@reflection.quoted_table_name}.#{@reflection.klass.primary_key} = #{@owner.connection.quote_table_name @reflection.options[:join_table]}.#{@reflection.association_foreign_key}"
 
-          if @reflection.options[:counter_sql]
-            @counter_sql = interpolate_sql(@reflection.options[:counter_sql])
-          elsif @reflection.options[:finder_sql]
-            # replace the SELECT clause with COUNT(*), preserving any hints within /* ... */
-            @reflection.options[:counter_sql] = @reflection.options[:finder_sql].sub(/SELECT (\/\*.*?\*\/ )?(.*)\bFROM\b/im) { "SELECT #{$1}COUNT(*) FROM" }
-            @counter_sql = interpolate_sql(@reflection.options[:counter_sql])
-          else
-            @counter_sql = @finder_sql
-          end
+          construct_counter_sql
         end
 
         def construct_scope
@@ -143,9 +103,10 @@ module ActiveRecord
                         :limit => @reflection.options[:limit] } }
         end
 
-        # Join tables with additional columns on top of the two foreign keys must be considered ambiguous unless a select
-        # clause has been explicitly defined. Otherwise you can get broken records back, if, for example, the join column also has
-        # an id column. This will then overwrite the id column of the records coming back.
+        # Join tables with additional columns on top of the two foreign keys must be considered
+        # ambiguous unless a select clause has been explicitly defined. Otherwise you can get
+        # broken records back, if, for example, the join column also has an id column. This will
+        # then overwrite the id column of the records coming back.
         def finding_with_ambiguous_select?(select_clause)
           !select_clause && columns.size != 2
         end
@@ -158,6 +119,14 @@ module ActiveRecord
             attributes.collect { |attr| create(attr) }
           else
             build_record(attributes, &block)
+          end
+        end
+
+        def record_timestamp_columns(record)
+          if record.record_timestamps
+            record.send(:all_timestamp_attributes).map { |x| x.to_s }
+          else
+            []
           end
         end
     end

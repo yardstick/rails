@@ -1,7 +1,10 @@
 require 'set'
+require 'active_support/core_ext/array/wrap'
 
 module ActiveRecord
   module Associations
+    # = Active Record Association Collection
+    #
     # AssociationCollection is an abstract class that provides common stuff to
     # ease the implementation of association proxies that represent
     # collections. See the class hierarchy in AssociationProxy.
@@ -11,7 +14,7 @@ module ActiveRecord
     # ones created with +build+ are added to the target. So, the target may be
     # non-empty and still lack children waiting to be read from the database.
     # If you look directly to the database you cannot assume that's the entire
-    # collection because new records may have beed added to the target, etc.
+    # collection because new records may have been added to the target, etc.
     #
     # If you need to work on all current children, new and existing records,
     # +load_target+ and the +loaded+ flag are your friends.
@@ -20,7 +23,22 @@ module ActiveRecord
         super
         construct_sql
       end
-      
+
+      delegate :group, :order, :limit, :joins, :where, :preload, :eager_load, :includes, :from, :lock, :readonly, :having, :to => :scoped
+
+      def select(select = nil)
+        if block_given?
+          load_target
+          @target.select.each { |e| yield e }
+        else
+          scoped.select(select)
+        end
+      end
+
+      def scoped
+        with_scope(construct_scope) { @reflection.klass.scoped }
+      end
+
       def find(*args)
         options = args.extract_options!
 
@@ -37,27 +55,24 @@ module ActiveRecord
             load_target.select { |r| ids.include?(r.id) }
           end
         else
-          conditions = "#{@finder_sql}"
-          if sanitized_conditions = sanitize_sql(options[:conditions])
-            conditions << " AND (#{sanitized_conditions})"
-          end
-          
-          options[:conditions] = conditions
-
-          if options[:order] && @reflection.options[:order]
-            options[:order] = "#{options[:order]}, #{@reflection.options[:order]}"
-          elsif @reflection.options[:order]
-            options[:order] = @reflection.options[:order]
-          end
-          
-          # Build options specific to association
-          construct_find_options!(options)
-          
           merge_options_from_reflection!(options)
-          
-          # Pass through args exactly as we received them.
-          args << options
-          @reflection.klass.find(*args)
+          construct_find_options!(options)
+
+          find_scope = construct_scope[:find].slice(:conditions, :order)
+
+          with_scope(:find => find_scope) do
+            relation = @reflection.klass.send(:construct_finder_arel, options, @reflection.klass.send(:current_scoped_methods))
+
+            case args.first
+            when :first, :last
+              relation.send(args.first)
+            when :all
+              records = relation.all
+              @reflection.options[:uniq] ? uniq(records) : records
+            else
+              relation.find(*args)
+            end
+          end
         end
       end
 
@@ -86,12 +101,14 @@ module ActiveRecord
         if @target.is_a?(Array)
           @target.to_ary
         else
-          Array(@target)
+          Array.wrap(@target)
         end
       end
+      alias_method :to_a, :to_ary
 
       def reset
         reset_target!
+        reset_named_scopes_cache!
         @loaded = false
       end
 
@@ -106,7 +123,7 @@ module ActiveRecord
         end
       end
 
-      # Add +records+ to this association.  Returns +self+ so method calls may be chained.  
+      # Add +records+ to this association.  Returns +self+ so method calls may be chained.
       # Since << flattens its argument list and inserts each record, +push+ and +concat+ behave identically.
       def <<(*records)
         result = true
@@ -133,7 +150,7 @@ module ActiveRecord
       #     has_many :books
       #   end
       #
-      #   Author.find(:first).books.transaction do
+      #   Author.first.books.transaction do
       #     # same effect as calling Book.transaction
       #   end
       def transaction(*args)
@@ -149,8 +166,9 @@ module ActiveRecord
         load_target
         delete(@target)
         reset_target!
+        reset_named_scopes_cache!
       end
-      
+
       # Calculate sum using SQL, not Enumerable
       def sum(*args)
         if block_given?
@@ -164,14 +182,18 @@ module ActiveRecord
       # be used for the query. If no +:counter_sql+ was supplied, but +:finder_sql+ was set, the
       # descendant's +construct_sql+ method will have set :counter_sql automatically.
       # Otherwise, construct options and pass them with scope to the target class's +count+.
-      def count(*args)
-        if @reflection.options[:counter_sql]
+      def count(column_name = nil, options = {})
+        column_name, options = nil, column_name if column_name.is_a?(Hash)
+
+        if @reflection.options[:counter_sql] && !options.blank?
+          raise ArgumentError, "If finder_sql/counter_sql is used then options cannot be passed"
+        elsif @reflection.options[:counter_sql]
           @reflection.klass.count_by_sql(@counter_sql)
         else
-          column_name, options = @reflection.klass.send(:construct_count_options_from_args, *args)
+
           if @reflection.options[:uniq]
             # This is needed because 'SELECT count(DISTINCT *)..' is not valid SQL.
-            column_name = "#{@reflection.quoted_table_name}.#{@reflection.klass.primary_key}" if column_name == :all
+            column_name = "#{@reflection.quoted_table_name}.#{@reflection.klass.primary_key}" unless column_name
             options.merge!(:distinct => true)
           end
 
@@ -196,9 +218,9 @@ module ActiveRecord
       # are actually removed from the database, that depends precisely on
       # +delete_records+. They are in any case removed from the collection.
       def delete(*records)
-        remove_records(records) do |records, old_records|
+        remove_records(records) do |_records, old_records|
           delete_records(old_records) if old_records.any?
-          records.each { |record| @target.delete(record) }
+          _records.each { |record| @target.delete(record) }
         end
       end
 
@@ -209,7 +231,7 @@ module ActiveRecord
       # ignoring the +:dependent+ option.
       def destroy(*records)
         records = find(records) if records.any? {|record| record.kind_of?(Fixnum) || record.kind_of?(String)}
-        remove_records(records) do |records, old_records|
+        remove_records(records) do |_records, old_records|
           old_records.each { |record| record.destroy }
         end
 
@@ -222,20 +244,21 @@ module ActiveRecord
 
         if @reflection.options[:dependent] && @reflection.options[:dependent] == :destroy
           destroy_all
-        else          
+        else
           delete_all
         end
 
         self
       end
 
-      # Destory all the records from this association.
+      # Destroy all the records from this association.
       #
       # See destroy for more info.
       def destroy_all
         load_target
         destroy(@target).tap do
           reset_target!
+          reset_named_scopes_cache!
         end
       end
 
@@ -304,15 +327,23 @@ module ActiveRecord
         end
       end
 
+      # Returns true if the collection has more than 1 record. Equivalent to collection.size > 1.
+      def many?
+        if block_given?
+          method_missing(:many?) { |*block_args| yield(*block_args) }
+        else
+          size > 1
+        end
+      end
+
       def uniq(collection = self)
         seen = Set.new
-        collection.inject([]) do |kept, record|
+        collection.map do |record|
           unless seen.include?(record.id)
-            kept << record
             seen << record.id
+            record
           end
-          kept
-        end
+        end.compact
       end
 
       # Replace this collection with +other_array+
@@ -345,7 +376,19 @@ module ActiveRecord
       protected
         def construct_find_options!(options)
         end
-        
+
+        def construct_counter_sql
+          if @reflection.options[:counter_sql]
+            @counter_sql = interpolate_sql(@reflection.options[:counter_sql])
+          elsif @reflection.options[:finder_sql]
+            # replace the SELECT clause with COUNT(*), preserving any hints within /* ... */
+            @reflection.options[:counter_sql] = @reflection.options[:finder_sql].sub(/SELECT\b(\/\*.*?\*\/ )?(.*)\bFROM\b/im) { "SELECT #{$1}COUNT(*) FROM" }
+            @counter_sql = interpolate_sql(@reflection.options[:counter_sql])
+          else
+            @counter_sql = @finder_sql
+          end
+        end
+
         def load_target
           if !@owner.new_record? || foreign_key_present
             begin
@@ -353,14 +396,15 @@ module ActiveRecord
                 if @target.is_a?(Array) && @target.any?
                   @target = find_target.map do |f|
                     i = @target.index(f)
-                    t = @target.delete_at(i) if i
-                    if t && t.changed?
-                      t
+                    if i
+                      @target.delete_at(i).tap do |t|
+                        keys = ["id"] + t.changes.keys + (f.attribute_names - t.attribute_names)
+                        t.attributes = f.attributes.except(*keys)
+                      end
                     else
-                      f.mark_for_destruction if t && t.marked_for_destruction?
                       f
                     end
-                  end + @target.find_all {|t| t.new_record?}
+                  end + @target
                 else
                   @target = find_target
                 end
@@ -373,18 +417,12 @@ module ActiveRecord
           loaded if target
           target
         end
-        
-        def method_missing(method, *args, &block)
-          case method.to_s
-          when 'find_or_create'
-            return find(:first, :conditions => args.first) || create(args.first)
-          when /^find_or_create_by_(.*)$/
-            rest = $1
-            find_args = pull_finder_args_from(DynamicFinderMatch.match(method).attribute_names, *args)
-            return  send("find_by_#{rest}", find_args) ||
-                    method_missing("create_by_#{rest}", *args, &block)
-          when /^create_by_(.*)$/
-            return create($1.split('_and_').zip(args).inject({}) { |h,kv| k,v=kv ; h[k] = v ; h }, &block)
+
+        def method_missing(method, *args)
+          match = DynamicFinderMatch.match(method)
+          if match && match.creator?
+            attributes = match.attribute_names
+            return send(:"find_by_#{attributes.join('_and_')}", *args) || create(Hash[attributes.zip(args)])
           end
 
           if @target.respond_to?(method) || (!@reflection.klass.respond_to?(method) && Class.respond_to?(method))
@@ -393,9 +431,11 @@ module ActiveRecord
             else
               super
             end
-          elsif @reflection.klass.scopes.include?(method)
-            @reflection.klass.scopes[method].call(self, *args)
-          else          
+          elsif @reflection.klass.scopes[method]
+            @_named_scopes_cache ||= {}
+            @_named_scopes_cache[method] ||= {}
+            @_named_scopes_cache[method][args] ||= with_scope(construct_scope) { @reflection.klass.send(method, *args) }
+          else
             with_scope(construct_scope) do
               if block_given?
                 @reflection.klass.send(method, *args) { |*block_args| yield(*block_args) }
@@ -413,6 +453,10 @@ module ActiveRecord
 
         def reset_target!
           @target = Array.new
+        end
+
+        def reset_named_scopes_cache!
+          @_named_scopes_cache = {}
         end
 
         def find_target
@@ -434,36 +478,24 @@ module ActiveRecord
           callback(:before_add, record)
           yield(record) if block_given?
           @target ||= [] unless loaded?
-          @target << record unless @reflection.options[:uniq] && @target.include?(record)
+          if index = @target.index(record)
+            @target[index] = record
+          else
+             @target << record
+          end
           callback(:after_add, record)
           set_inverse_instance(record, @owner)
           record
         end
 
       private
-        # Separate the "finder" args from the "create" args given to a
-        # find_or_create_by_ call.  Returns an array with the
-        # parameter values in the same order as the keys in the
-        # "names" array.  This code was based on code in base.rb's
-        # method_missing method.
-        def pull_finder_args_from(names, *args)
-          attributes = names.collect { |name| name.intern }
-          attribute_hash = {}
-          args.each_with_index do |arg, i|
-            if arg.is_a?(Hash)
-              attribute_hash.merge! arg
-            else
-              attribute_hash[attributes[i]] = arg
-            end
-          end
-          attribute_hash = attribute_hash.with_indifferent_access
-          attributes.collect { |attr| attribute_hash[attr] }
-        end
-
         def create_record(attrs)
           attrs.update(@reflection.options[:conditions]) if @reflection.options[:conditions].is_a?(Hash)
           ensure_owner_is_not_new
-          record = @reflection.klass.send(:with_scope, :create => construct_scope[:create]) do
+
+          scoped_where = scoped.where_values_hash
+          create_scope = scoped_where ? construct_scope[:create].merge(scoped_where) : construct_scope[:create]
+          record = @reflection.klass.send(:with_scope, :create => create_scope) do
             @reflection.build_association(attrs)
           end
           if block_given?
@@ -497,7 +529,14 @@ module ActiveRecord
 
         def callback(method, record)
           callbacks_for(method).each do |callback|
-            ActiveSupport::Callbacks::Callback.new(method, callback, record).call(@owner, record)
+            case callback
+            when Symbol
+              @owner.send(callback, record)
+            when Proc
+              callback.call(@owner, record)
+            else
+              callback.send(method, @owner, record)
+            end
           end
         end
 
@@ -519,7 +558,7 @@ module ActiveRecord
 
         def include_in_memory?(record)
           if @reflection.is_a?(ActiveRecord::Reflection::ThroughReflection)
-            @owner.send(proxy_reflection.through_reflection.name.to_sym).each do |source|
+            @owner.send(proxy_reflection.through_reflection.name.to_sym).map do |source|
               source_reflection_target = source.send(proxy_reflection.source_reflection.name)
               return true if source_reflection_target.respond_to?(:include?) ? source_reflection_target.include?(record) : source_reflection_target == record
             end

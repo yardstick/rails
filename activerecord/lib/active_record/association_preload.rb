@@ -1,15 +1,16 @@
+require 'active_support/core_ext/array/wrap'
+require 'active_support/core_ext/enumerable'
+
 module ActiveRecord
   # See ActiveRecord::AssociationPreload::ClassMethods for documentation.
   module AssociationPreload #:nodoc:
-    def self.included(base)
-      base.extend(ClassMethods)
-    end
+    extend ActiveSupport::Concern
 
-    # Implements the details of eager loading of ActiveRecord associations.
+    # Implements the details of eager loading of Active Record associations.
     # Application developers should not use this module directly.
     #
-    # ActiveRecord::Base is extended with this module. The source code in
-    # ActiveRecord::Base references methods defined in this module.
+    # <tt>ActiveRecord::Base</tt> is extended with this module. The source code in
+    # <tt>ActiveRecord::Base</tt> references methods defined in this module.
     #
     # Note that 'eager loading' and 'preloading' are actually the same thing.
     # However, there are two different eager loading strategies.
@@ -17,7 +18,7 @@ module ActiveRecord
     # The first one is by using table joins. This was only strategy available
     # prior to Rails 2.1. Suppose that you have an Author model with columns
     # 'name' and 'age', and a Book model with columns 'name' and 'sales'. Using
-    # this strategy, ActiveRecord would try to retrieve all data for an author
+    # this strategy, Active Record would try to retrieve all data for an author
     # and all of its books via a single query:
     #
     #   SELECT * FROM authors
@@ -30,7 +31,7 @@ module ActiveRecord
     # 'books' table is useful; the joined 'authors' data is just redundant, and
     # processing this redundant data takes memory and CPU time. The problem
     # quickly becomes worse and worse as the level of eager loading increases
-    # (i.e. if ActiveRecord is to eager load the associations' assocations as
+    # (i.e. if Active Record is to eager load the associations' associations as
     # well).
     #
     # The second strategy is to use multiple database queries, one for each
@@ -44,7 +45,7 @@ module ActiveRecord
     module ClassMethods
       protected
 
-      # Eager loads the named associations for the given ActiveRecord record(s).
+      # Eager loads the named associations for the given Active Record record(s).
       #
       # In this description, 'association name' shall refer to the name passed
       # to an association creation method. For example, a model that specifies
@@ -54,13 +55,13 @@ module ActiveRecord
       # == Parameters
       # +records+ is an array of ActiveRecord::Base. This array needs not be flat,
       # i.e. +records+ itself may also contain arrays of records. In any case,
-      # +preload_associations+ will preload the associations all records by
+      # +preload_associations+ will preload the all associations records by
       # flattening +records+.
       #
       # +associations+ specifies one or more associations that you want to
       # preload. It may be:
       # - a Symbol or a String which specifies a single association name. For
-      #   example, specifiying +:books+ allows this method to preload all books
+      #   example, specifying +:books+ allows this method to preload all books
       #   for an Author.
       # - an Array which specifies multiple association names. This array
       #   is processed recursively. For example, specifying <tt>[:avatar, :books]</tt>
@@ -79,12 +80,12 @@ module ActiveRecord
       #   { :author => :avatar }
       #   [ :books, { :author => :avatar } ]
       #
-      # +preload_options+ contains options that will be passed to ActiveRecord#find
+      # +preload_options+ contains options that will be passed to ActiveRecord::Base#find
       # (which is called under the hood for preloading records). But it is passed
       # only one level deep in the +associations+ argument, i.e. it's not passed
       # to the child associations when +associations+ is a Hash.
       def preload_associations(records, associations, preload_options={})
-        records = [records].flatten.compact.uniq
+        records = Array.wrap(records).compact.uniq
         return if records.empty?
         case associations
         when Array then associations.each {|association| preload_associations(records, association, preload_options)}
@@ -94,7 +95,7 @@ module ActiveRecord
             raise "parent must be an association name" unless parent.is_a?(String) || parent.is_a?(Symbol)
             preload_associations(records, parent, preload_options)
             reflection = reflections[parent]
-            parents = records.map {|record| record.send(reflection.name)}.flatten.compact
+            parents = records.sum { |record| Array.wrap(record.send(reflection.name)) }
             unless parents.empty?
               parents.first.class.preload_associations(parents, child)
             end
@@ -109,15 +110,15 @@ module ActiveRecord
       def preload_one_association(records, association, preload_options={})
         class_to_reflection = {}
         # Not all records have the same class, so group then preload
-        # group on the reflection itself so that if various subclass share the same association then we do not split them
-        # unnecessarily
-        records.group_by {|record| class_to_reflection[record.class] ||= record.class.reflections[association]}.each do |reflection, records|
+        # group on the reflection itself so that if various subclass share the same association then
+        # we do not split them unnecessarily
+        records.group_by { |record| class_to_reflection[record.class] ||= record.class.reflections[association]}.each do |reflection, _records|
           raise ConfigurationError, "Association named '#{ association }' was not found; perhaps you misspelled it?" unless reflection
 
           # 'reflection.macro' can return 'belongs_to', 'has_many', etc. Thus,
           # the following could call 'preload_belongs_to_association',
           # 'preload_has_many_association', etc.
-          send("preload_#{reflection.macro}_association", records, reflection, preload_options)
+          send("preload_#{reflection.macro}_association", _records, reflection, preload_options)
         end
       end
 
@@ -125,7 +126,8 @@ module ActiveRecord
         parent_records.each do |parent_record|
           association_proxy = parent_record.send(reflection_name)
           association_proxy.loaded
-          association_proxy.target.push(*[associated_record].flatten)
+          association_proxy.target.push(*Array.wrap(associated_record))
+
           association_proxy.__send__(:set_inverse_instance, associated_record, parent_record)
         end
       end
@@ -147,7 +149,8 @@ module ActiveRecord
         seen_keys = {}
         associated_records.each do |associated_record|
           #this is a has_one or belongs_to: there should only be one record.
-          #Unfortunately we can't (in portable way) ask the database for 'all records where foo_id in (x,y,z), but please
+          #Unfortunately we can't (in portable way) ask the database for
+          #'all records where foo_id in (x,y,z), but please
           # only one row per distinct foo_id' so this where we enforce that
           next if seen_keys[associated_record[key].to_s]
           seen_keys[associated_record[key].to_s] = true
@@ -160,11 +163,11 @@ module ActiveRecord
 
         id_to_record_map.each do |id, records|
           next if seen_keys.include?(id.to_s)
-          records.each {|record| record.send("set_#{reflection_name}_target", nil) }            
+          records.each {|record| record.send("set_#{reflection_name}_target", nil) }
         end
       end
 
-      # Given a collection of ActiveRecord objects, constructs a Hash which maps
+      # Given a collection of Active Record objects, constructs a Hash which maps
       # the objects' IDs to the relevant objects. Returns a 2-tuple
       # <tt>(id_to_record_map, ids)</tt> where +id_to_record_map+ is the Hash,
       # and +ids+ is an Array of record IDs.
@@ -190,14 +193,17 @@ module ActiveRecord
         conditions = "t0.#{reflection.primary_key_name} #{in_or_equals_for_ids(ids)}"
         conditions << append_conditions(reflection, preload_options)
 
-        associated_records = reflection.klass.with_exclusive_scope do
-          reflection.klass.find(:all, :conditions => [conditions, ids],
-            :include => options[:include],
-            :joins => "INNER JOIN #{connection.quote_table_name options[:join_table]} t0 ON #{reflection.klass.quoted_table_name}.#{reflection.klass.primary_key} = t0.#{reflection.association_foreign_key}",
-            :select => "#{options[:select] || table_name+'.*'}, t0.#{reflection.primary_key_name} as the_parent_record_id",
-            :order => options[:order])
+        associated_records_proxy = reflection.klass.unscoped.
+            includes(options[:include]).
+            joins("INNER JOIN #{connection.quote_table_name options[:join_table]} t0 ON #{reflection.klass.quoted_table_name}.#{reflection.klass.primary_key} = t0.#{reflection.association_foreign_key}").
+            select("#{options[:select] || table_name+'.*'}, t0.#{reflection.primary_key_name} as the_parent_record_id").
+            order(options[:order])
+
+        all_associated_records = associated_records(ids) do |some_ids|
+          associated_records_proxy.where([conditions, ids]).to_a
         end
-        set_association_collection_records(id_to_record_map, reflection.name, associated_records, 'the_parent_record_id')
+
+        set_association_collection_records(id_to_record_map, reflection.name, all_associated_records, 'the_parent_record_id')
       end
 
       def preload_has_one_association(records, reflection, preload_options={})
@@ -261,6 +267,7 @@ module ActiveRecord
         through_reflection = reflections[through_association]
         through_primary_key = through_reflection.primary_key_name
 
+        through_records = []
         if reflection.options[:source_type]
           interface = reflection.source_reflection.options[:foreign_type]
           preload_options = {:conditions => ["#{connection.quote_column_name interface} = ?", reflection.options[:source_type]]}
@@ -269,27 +276,27 @@ module ActiveRecord
           records.first.class.preload_associations(records, through_association, preload_options)
 
           # Dont cache the association - we would only be caching a subset
-          through_records = []
           records.each do |record|
             proxy = record.send(through_association)
 
             if proxy.respond_to?(:target)
-              through_records << proxy.target
+              through_records.concat Array.wrap(proxy.target)
               proxy.reset
             else # this is a has_one :through reflection
               through_records << proxy if proxy
             end
           end
-          through_records.flatten!
         else
           options = {}
           options[:include] = reflection.options[:include] || reflection.options[:source] if reflection.options[:conditions] || reflection.options[:order]
           options[:order] = reflection.options[:order]
           options[:conditions] = reflection.options[:conditions]
           records.first.class.preload_associations(records, through_association, options)
-          through_records = records.map {|record| record.send(through_association)}.flatten
+
+          records.each do |record|
+            through_records.concat Array.wrap(record.send(through_association))
+          end
         end
-        through_records.compact!
         through_records
       end
 
@@ -302,7 +309,8 @@ module ActiveRecord
           polymorph_type = options[:foreign_type]
           klasses_and_ids = {}
 
-          # Construct a mapping from klass to a list of ids to load and a mapping of those ids back to their parent_records
+          # Construct a mapping from klass to a list of ids to load and a mapping of those ids back
+          # to their parent_records
           records.each do |record|
             if klass = record.send(polymorph_type)
               klass_id = record.send(primary_key_name)
@@ -334,6 +342,7 @@ module ActiveRecord
           table_name = klass.quoted_table_name
           primary_key = reflection.options[:primary_key] || klass.primary_key
           column_type = klass.columns.detect{|c| c.name == primary_key}.type
+
           ids = id_map.keys.map do |id|
             if column_type == :integer
               id.to_i
@@ -343,15 +352,12 @@ module ActiveRecord
               id
             end
           end
+
           conditions = "#{table_name}.#{connection.quote_column_name(primary_key)} #{in_or_equals_for_ids(ids)}"
           conditions << append_conditions(reflection, preload_options)
-          associated_records = klass.with_exclusive_scope do
-            klass.find(:all, :conditions => [conditions, ids],
-                                          :include => options[:include],
-                                          :select => options[:select],
-                                          :joins => options[:joins],
-                                          :order => options[:order])
-          end
+
+          associated_records = klass.unscoped.where([conditions, ids]).apply_finder_options(options.slice(:include, :select, :joins, :order)).to_a
+
           set_association_single_records(id_map, reflection.name, associated_records, primary_key)
         end
       end
@@ -361,13 +367,7 @@ module ActiveRecord
         table_name = reflection.klass.quoted_table_name
 
         if interface = reflection.options[:as]
-          parent_type = if reflection.active_record.abstract_class?
-            self.base_class.sti_name
-          else
-            reflection.active_record.sti_name
-          end
-
-          conditions = "#{reflection.klass.quoted_table_name}.#{connection.quote_column_name "#{interface}_id"} #{in_or_equals_for_ids(ids)} and #{reflection.klass.quoted_table_name}.#{connection.quote_column_name "#{interface}_type"} = '#{parent_type}'"
+          conditions = "#{reflection.klass.quoted_table_name}.#{connection.quote_column_name "#{interface}_id"} #{in_or_equals_for_ids(ids)} and #{reflection.klass.quoted_table_name}.#{connection.quote_column_name "#{interface}_type"} = '#{self.base_class.sti_name}'"
         else
           foreign_key = reflection.primary_key_name
           conditions = "#{reflection.klass.quoted_table_name}.#{foreign_key} #{in_or_equals_for_ids(ids)}"
@@ -375,20 +375,22 @@ module ActiveRecord
 
         conditions << append_conditions(reflection, preload_options)
 
-        reflection.klass.with_exclusive_scope do
-          reflection.klass.find(:all,
-                              :select => (preload_options[:select] || options[:select] || "#{table_name}.*"),
-                              :include => preload_options[:include] || options[:include],
-                              :conditions => [conditions, ids],
-                              :joins => options[:joins],
-                              :group => preload_options[:group] || options[:group],
-                              :order => preload_options[:order] || options[:order])
+        find_options = {
+          :select => preload_options[:select] || options[:select] || Arel::SqlLiteral.new("#{table_name}.*"),
+          :include => preload_options[:include] || options[:include],
+          :joins => options[:joins],
+          :group => preload_options[:group] || options[:group],
+          :order => preload_options[:order] || options[:order]
+        }
+
+        associated_records(ids) do |some_ids|
+          reflection.klass.scoped.apply_finder_options(find_options.merge(:conditions => [conditions, some_ids])).to_a
         end
       end
 
 
       def interpolate_sql_for_preload(sql)
-        instance_eval("%@#{sql.gsub('@', '\@')}@")
+        instance_eval("%@#{sql.gsub('@', '\@')}@", __FILE__, __LINE__)
       end
 
       def append_conditions(reflection, preload_options)
@@ -400,6 +402,17 @@ module ActiveRecord
 
       def in_or_equals_for_ids(ids)
         ids.size > 1 ? "IN (?)" : "= ?"
+      end
+
+      # Some databases impose a limit on the number of ids in a list (in Oracle its 1000)
+      # Make several smaller queries if necessary or make one query if the adapter supports it
+      def associated_records(ids)
+        max_ids_in_a_list = connection.ids_in_list_limit || ids.size
+        records = []
+        ids.each_slice(max_ids_in_a_list) do |some_ids|
+          records += yield(some_ids)
+        end
+        records
       end
     end
   end

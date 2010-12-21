@@ -5,8 +5,6 @@ require 'models/company'
 require 'models/topic'
 require 'models/reply'
 require 'models/computer'
-require 'models/customer'
-require 'models/order'
 require 'models/post'
 require 'models/author'
 require 'models/tag'
@@ -18,12 +16,13 @@ require 'models/essay'
 
 class BelongsToAssociationsTest < ActiveRecord::TestCase
   fixtures :accounts, :companies, :developers, :projects, :topics,
-           :developers_projects, :computers, :authors, :posts, :tags, :taggings, :comments
+           :developers_projects, :computers, :authors, :author_addresses,
+           :posts, :tags, :taggings, :comments
 
   def test_belongs_to
     Client.find(3).firm.name
     assert_equal companies(:first_firm).name, Client.find(3).firm.name
-    assert !Client.find(3).firm.nil?, "Microsoft should have a firm"
+    assert_not_nil Client.find(3).firm, "Microsoft should have a firm"
   end
 
   def test_belongs_to_with_primary_key
@@ -32,9 +31,18 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_belongs_to_with_primary_key_joins_on_correct_column
-    sql = Client.send(:construct_finder_sql, :joins => :firm_with_primary_key)
-    assert sql !~ /\.id/
-    assert sql =~ /\.name/
+    sql = Client.joins(:firm_with_primary_key).to_sql
+    if current_adapter?(:MysqlAdapter) or current_adapter?(:Mysql2Adapter)
+      assert_no_match(/`firm_with_primary_keys_companies`\.`id`/, sql)
+      assert_match(/`firm_with_primary_keys_companies`\.`name`/, sql)
+    elsif current_adapter?(:OracleAdapter)
+      # on Oracle aliases are truncated to 30 characters and are quoted in uppercase
+      assert_no_match(/"firm_with_primary_keys_compani"\."id"/i, sql)
+      assert_match(/"firm_with_primary_keys_compani"\."name"/i, sql)
+    else
+      assert_no_match(/"firm_with_primary_keys_companies"\."id"/, sql)
+      assert_match(/"firm_with_primary_keys_companies"\."name"/, sql)
+    end
   end
 
   def test_proxy_assignment
@@ -207,6 +215,10 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
 
     r1.topic = Topic.find(t2.id)
 
+    assert_no_queries do
+      r1.topic = t2
+    end
+
     assert r1.save
     assert_equal 0, Topic.find(t1.id).replies.size
     assert_equal 1, Topic.find(t2.id).replies.size
@@ -288,7 +300,8 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
 
   def test_new_record_with_foreign_key_but_no_object
     c = Client.new("firm_id" => 1)
-    assert_equal Firm.find(:first), c.firm_with_basic_id
+    # sometimes tests on Oracle fail if ORDER BY is not provided therefore add always :order with :first
+    assert_equal Firm.find(:first, :order => "id"), c.firm_with_basic_id
   end
 
   def test_forgetting_the_load_when_foreign_key_enters_late
@@ -296,7 +309,8 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_nil c.firm_with_basic_id
 
     c.firm_id = 1
-    assert_equal Firm.find(:first), c.firm_with_basic_id
+    # sometimes tests on Oracle fail if ORDER BY is not provided therefore add always :order with :first
+    assert_equal Firm.find(:first, :order => "id"), c.firm_with_basic_id
   end
 
   def test_field_name_same_as_foreign_key
@@ -357,7 +371,7 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_raise(ActiveRecord::ReadOnlyRecord) { companies(:first_client).readonly_firm.save! }
     assert companies(:first_client).readonly_firm.readonly?
   end
-  
+
   def test_polymorphic_assignment_foreign_type_field_updating
     # should update when assigning a saved record
     sponsor = Sponsor.new
@@ -395,7 +409,7 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_equal saved_member.id, sponsor.sponsorable_id
 
     sponsor.sponsorable = new_member
-    assert_equal nil, sponsor.sponsorable_id
+    assert_nil sponsor.sponsorable_id
   end
 
   def test_polymorphic_assignment_with_primary_key_updates_foreign_id_field_for_new_and_saved_records
@@ -407,7 +421,7 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_equal saved_writer.name, essay.writer_id
 
     essay.writer = new_writer
-    assert_equal nil, essay.writer_id
+    assert_nil essay.writer_id
   end
 
   def test_belongs_to_proxy_should_not_respond_to_private_methods
@@ -434,5 +448,35 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
       Account.find(@account.id).save!
       Account.find(@account.id, :include => :firm).save!
     end
+  end
+
+  def test_dependent_delete_and_destroy_with_belongs_to
+    author_address = author_addresses(:david_address)
+    author_address_extra = author_addresses(:david_address_extra)
+    assert_equal [], AuthorAddress.destroyed_author_address_ids
+
+    assert_difference "AuthorAddress.count", -2 do
+      authors(:david).destroy
+    end
+
+    assert_equal [], AuthorAddress.find_all_by_id([author_address.id, author_address_extra.id])
+    assert_equal [author_address.id], AuthorAddress.destroyed_author_address_ids
+  end
+
+  def test_invalid_belongs_to_dependent_option_nullify_raises_exception
+    assert_raise ArgumentError do
+      Author.belongs_to :special_author_address, :dependent => :nullify
+    end
+  end
+
+  def test_invalid_belongs_to_dependent_option_restrict_raises_exception
+    assert_raise ArgumentError do
+      Author.belongs_to :special_author_address, :dependent => :restrict
+    end
+  end
+
+  def test_attributes_are_being_set_when_initialized_from_belongs_to_association_with_where_clause
+    new_firm = accounts(:signals37).build_firm(:name => 'Apple')
+    assert_equal new_firm.name, "Apple"
   end
 end

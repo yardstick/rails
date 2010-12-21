@@ -7,13 +7,12 @@ require 'models/categorization'
 require 'active_support/core_ext/array/random_access'
 
 module Remembered
-  def self.included(base)
-    base.extend ClassMethods
-    base.class_eval do
-      after_create :remember
-    protected
-      def remember; self.class.remembered << self; end
-    end
+  extend ActiveSupport::Concern
+
+  included do
+    after_create :remember
+  protected
+    def remember; self.class.remembered << self; end
   end
 
   module ClassMethods
@@ -73,9 +72,7 @@ class EagerLoadPolyAssocsTest < ActiveRecord::TestCase
      ShapeExpression, NonPolyOne, NonPolyTwo].each do |c|
       c.delete_all
     end
-
   end
-
 
   def generate_test_object_graphs
     1.upto(NUM_SIMPLE_OBJS) do

@@ -1,51 +1,54 @@
 require 'cases/helper'
 require 'models/topic'
+require 'models/car'
+require 'models/wheel'
+require 'models/engine'
 require 'models/reply'
 require 'models/category'
 require 'models/categorization'
 
 class CounterCacheTest < ActiveRecord::TestCase
-  fixtures :topics, :categories, :categorizations
+  fixtures :topics, :categories, :categorizations, :cars
 
-  class SpecialTopic < ::Topic
+  class ::SpecialTopic < ::Topic
     has_many :special_replies, :foreign_key => 'parent_id'
   end
 
-  class SpecialReply < ::Reply
+  class ::SpecialReply < ::Reply
     belongs_to :special_topic, :foreign_key => 'parent_id', :counter_cache => 'replies_count'
   end
 
+  setup do
+    @topic = Topic.find(1)
+  end
+
   test "increment counter" do
-    topic = Topic.find(1)
-    assert_difference 'topic.reload.replies_count' do
-      Topic.increment_counter(:replies_count, topic.id)
+    assert_difference '@topic.reload.replies_count' do
+      Topic.increment_counter(:replies_count, @topic.id)
     end
   end
 
   test "decrement counter" do
-    topic = Topic.find(1)
-    assert_difference 'topic.reload.replies_count', -1 do
-      Topic.decrement_counter(:replies_count, topic.id)
+    assert_difference '@topic.reload.replies_count', -1 do
+      Topic.decrement_counter(:replies_count, @topic.id)
     end
   end
 
   test "reset counters" do
-    topic = Topic.find(1)
     # throw the count off by 1
-    Topic.increment_counter(:replies_count, topic.id)
+    Topic.increment_counter(:replies_count, @topic.id)
 
     # check that it gets reset
-    assert_difference 'topic.reload.replies_count', -1 do
-      Topic.reset_counters(topic.id, :replies)
+    assert_difference '@topic.reload.replies_count', -1 do
+      Topic.reset_counters(@topic.id, :replies)
     end
   end
-  
-  test "reset counters with string argument" do
-    topic = Topic.find(1)
-    Topic.increment_counter('replies_count', topic.id)
 
-    assert_difference 'topic.reload.replies_count', -1 do
-      Topic.reset_counters(topic.id, 'replies')
+  test "reset counters with string argument" do
+    Topic.increment_counter('replies_count', @topic.id)
+
+    assert_difference '@topic.reload.replies_count', -1 do
+      Topic.reset_counters(@topic.id, 'replies')
     end
   end
 
@@ -55,6 +58,16 @@ class CounterCacheTest < ActiveRecord::TestCase
 
     assert_difference 'special.reload.replies_count', -1 do
       SpecialTopic.reset_counters(special.id, :special_replies)
+    end
+  end
+
+  test "reset counter should with belongs_to which has class_name" do
+    car = cars(:honda)
+    assert_nothing_raised do
+      Car.reset_counters(car.id, :engines)
+    end
+    assert_nothing_raised do
+      Car.reset_counters(car.id, :wheels)
     end
   end
 
@@ -68,9 +81,8 @@ class CounterCacheTest < ActiveRecord::TestCase
   end
 
   test "update counter for decrement" do
-    topic = Topic.find(1)
-    assert_difference 'topic.reload.replies_count', -3 do
-      Topic.update_counters(topic.id, :replies_count => -3)
+    assert_difference '@topic.reload.replies_count', -3 do
+      Topic.update_counters(@topic.id, :replies_count => -3)
     end
   end
 

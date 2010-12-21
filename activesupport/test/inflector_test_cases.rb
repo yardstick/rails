@@ -14,7 +14,7 @@ module InflectorTestCases
     "fish"        => "fish",
     "jeans"       => "jeans",
     "funky jeans" => "funky jeans",
-    
+
     "category"    => "categories",
     "query"       => "queries",
     "ability"     => "abilities",
@@ -119,6 +119,13 @@ module InflectorTestCases
     "area51_controller"      => "area51Controller"
   }
 
+  SymbolToLowerCamel = {
+    :product                => 'product',
+    :special_guest          => 'specialGuest',
+    :application_controller => 'applicationController',
+    :area51_controller      => 'area51Controller'
+  }
+
   CamelToUnderscoreWithoutReverse = {
     "HTMLTidy"              => "html_tidy",
     "HTMLTidyGenerator"     => "html_tidy_generator",
@@ -178,20 +185,14 @@ module InflectorTestCases
     "Test with malformed utf8 \251"       => "test_with_malformed_utf8"
   }
 
-  # Ruby 1.9 doesn't do Unicode normalization yet.
-  if RUBY_VERSION >= '1.9'
-    StringToParameterizedAndNormalized = {
-      "Malmö"                               => "malm",
-      "Garçons"                             => "gar-ons",
-      "Ops \251"                            => "ops"
-    }
-  else
-    StringToParameterizedAndNormalized = {
-      "Malmö"                               => "malmo",
-      "Garçons"                             => "garcons",
-      "Ops \251"                            => "ops"
-    }
-  end
+  StringToParameterizedAndNormalized = {
+    "Malmö"                               => "malmo",
+    "Garçons"                             => "garcons",
+    "Ops\331"                             => "opsu",
+    "Ærøskøbing"                          => "aeroskobing",
+    "Aßlar"                               => "asslar",
+    "Japanese: 日本語"                    => "japanese"
+  }
 
   UnderscoreToHuman = {
     "employee_salary" => "Employee salary",

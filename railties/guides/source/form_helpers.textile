@@ -21,7 +21,7 @@ h3. Dealing with Basic Forms
 The most basic form helper is +form_tag+.
 
 <erb>
-<% form_tag do %>
+<%= form_tag do %>
   Form contents
 <% end %>
 </erb>
@@ -58,15 +58,15 @@ To create this form you will use +form_tag+, +label_tag+, +text_field_tag+, and 
 
 A basic search form
 
-<html>
-<% form_tag(search_path, :method => "get") do %>
+<erb>
+<%= form_tag(search_path, :method => "get") do %>
   <%= label_tag(:q, "Search for:") %>
   <%= text_field_tag(:q) %>
   <%= submit_tag("Search") %>
 <% end %>
-</html>
+</erb>
 
-TIP: +search_path+ can be a named route specified in "routes.rb": <pre>map.search "search", :controller => "search"</pre>
+TIP: +search_path+ can be a named route specified in "routes.rb": <br /><tt>map.search "search", :controller => "search"</tt>
 
 The above view code will result in the following markup:
 
@@ -106,7 +106,7 @@ WARNING: Do not delimit the second hash without doing so with the first hash, ot
 
 h4. Helpers for Generating Form Elements
 
-Rails provides a series of helpers for generating form elements such as checkboxes, text fields, radio buttons, and so on. These basic helpers, with names ending in <notextile>_tag</notextile> such as +text_field_tag+, +check_box_tag+, etc., generate just a single +&lt;input&gt;+ element. The first parameter to these is always the name of the input. In the controller this name will be the key in the +params+ hash used to get the value entered by the user. For example, if the form contains
+Rails provides a series of helpers for generating form elements such as checkboxes, text fields, radio buttons, and so on. These basic helpers, with names ending in <notextile>_tag</notextile> such as +text_field_tag+, +check_box_tag+, generate just a single +&lt;input&gt;+ element. The first parameter to these is always the name of the input. In the controller this name will be the key in the +params+ hash used to get the value entered by the user. For example, if the form contains
 
 <erb>
 <%= text_field_tag(:query) %>
@@ -126,17 +126,19 @@ Checkboxes are form controls that give the user a set of options they can enable
 
 <erb>
 <%= check_box_tag(:pet_dog) %>
-  <%= label_tag(:pet_dog, "I own a dog") %>
+<%= label_tag(:pet_dog, "I own a dog") %>
 <%= check_box_tag(:pet_cat) %>
-  <%= label_tag(:pet_cat, "I own a cat") %>
+<%= label_tag(:pet_cat, "I own a cat") %>
+</erb>
 
 output:
 
+<html>
 <input id="pet_dog" name="pet_dog" type="checkbox" value="1" />
-  <label for="pet_dog">I own a dog</label>
+<label for="pet_dog">I own a dog</label>
 <input id="pet_cat" name="pet_cat" type="checkbox" value="1" />
-  <label for="pet_cat">I own a cat</label>
-</erb>
+<label for="pet_cat">I own a cat</label>
+</html>
 
 The second parameter to +check_box_tag+ is the value of the input. This is the value that will be submitted by the browser if the checkbox is ticked (i.e. the value that will be present in the +params+ hash). With the above form you would check the value of +params[:pet_dog]+ and +params[:pet_cat]+ to see which pets the user owns.
 
@@ -146,17 +148,19 @@ Radio buttons, while similar to checkboxes, are controls that specify a set of o
 
 <erb>
 <%= radio_button_tag(:age, "child") %>
-  <%= label_tag(:age_child, "I am younger than 21") %>
+<%= label_tag(:age_child, "I am younger than 21") %>
 <%= radio_button_tag(:age, "adult") %>
-  <%= label_tag(:age_adult, "I'm over 21") %>
+<%= label_tag(:age_adult, "I'm over 21") %>
+</erb>
 
 output:
 
+<html>
 <input id="age_child" name="age" type="radio" value="child" />
-  <label for="age_child">I am younger than 21</label>
+<label for="age_child">I am younger than 21</label>
 <input id="age_adult" name="age" type="radio" value="adult" />
-  <label for="age_adult">I'm over 21</label>
-</erb>
+<label for="age_adult">I'm over 21</label>
+</html>
 
 As with +check_box_tag+ the second parameter to +radio_button_tag+ is the value of the input. Because these two radio buttons share the same name (age) the user will only be able to select one and +params[:age]+ will contain either "child" or "adult".
 
@@ -170,13 +174,15 @@ Other form controls worth mentioning are the text area, password input and hidde
 <%= text_area_tag(:message, "Hi, nice site", :size => "24x6") %>
 <%= password_field_tag(:password) %>
 <%= hidden_field_tag(:parent_id, "5") %>
+</erb>
 
 output:
 
+<html>
 <textarea id="message" name="message" cols="24" rows="6">Hi, nice site</textarea>
 <input id="password" name="password" type="password" />
 <input id="parent_id" name="parent_id" type="hidden" value="5" />
-</erb>
+</html>
 
 Hidden inputs are not shown to the user, but they hold data like any textual input. Values inside them can be changed with JavaScript.
 
@@ -205,15 +211,13 @@ Upon form submission the value entered by the user will be stored in +params[:pe
 
 WARNING: You must pass the name of an instance variable, i.e. +:person+ or +"person"+, not an actual instance of your model object.
 
-Rails provides helpers for displaying the validation errors associated with a model object. These are covered in detail by the "Active Record Validations and Callbacks":./activerecord_validations_callbacks.html#_using_the_tt_errors_tt_collection_in_your_view_templates guide.
+Rails provides helpers for displaying the validation errors associated with a model object. These are covered in detail by the "Active Record Validations and Callbacks":./active_record_validations_callbacks.html#displaying-validation-errors-in-the-view guide.
 
 h4. Binding a Form to an Object
 
 While this is an increase in comfort it is far from perfect. If Person has many attributes to edit then we would be repeating the name of the edited object many times. What we want to do is somehow bind a form to a model object, which is exactly what +form_for+ does.
 
-Assume we have a controller for dealing with articles:
-
-articles_controller.rb:
+Assume we have a controller for dealing with articles +app/controllers/articles_controller.rb+:
 
 <ruby>
 def new
@@ -221,12 +225,10 @@ def new
 end
 </ruby>
 
-The corresponding view using +form_for+ looks like this
-
-articles/new.html.erb:
+The corresponding view +app/views/articles/new.html.erb+ using +form_for+ looks like this:
 
 <erb>
-<% form_for :article, @article, :url => { :action => "create" }, :html => {:class => "nifty_form"} do |f| %>
+<%= form_for :article, @article, :url => { :action => "create" }, :html => {:class => "nifty_form"} do |f| %>
   <%= f.text_field :title %>
   <%= f.text_area :body, :size => "60x12" %>
   <%= submit_tag "Create" %>
@@ -257,9 +259,9 @@ The helper methods called on the form builder are identical to the model object 
 You can create a similar binding without actually creating  +&lt;form&gt;+ tags with the +fields_for+ helper. This is useful for editing additional model objects with the same form. For example if you had a Person model with an associated ContactDetail model you could create a form for creating both like so:
 
 <erb>
-<% form_for :person, @person, :url => { :action => "create" } do |person_form| %>
+<%= form_for :person, @person, :url => { :action => "create" } do |person_form| %>
   <%= person_form.text_field :name %>
-  <% fields_for @person.contact_detail do |contact_details_form| %>
+  <%= fields_for @person.contact_detail do |contact_details_form| %>
     <%= contact_details_form.text_field :phone_number %>
   <% end %>
 <% end %>
@@ -278,7 +280,13 @@ The object yielded by +fields_for+ is a form builder like the one yielded by +fo
 
 h4. Relying on Record Identification
 
-The Article model is directly available to users of the application, so -- following the best practices for developing with Rails -- you should declare it *a resource*.
+The Article model is directly available to users of the application, so -- following the best practices for developing with Rails -- you should declare it *a resource*:
+
+<ruby>
+resources :articles
+</ruby>
+
+TIP: Declaring a resource has a number of side-affects. See "Rails Routing From the Outside In":routing.html#resource-routing-the-rails-default for more information on setting up and using resources.
 
 When dealing with RESTful resources, calls to +form_for+ can get significantly easier if you rely on *record identification*. In short, you can just pass the model instance and have Rails figure out model name and the rest:
 
@@ -291,7 +299,7 @@ form_for(@article)
 
 ## Editing an existing article
 # long-style:
-form_for(:article, @article, :url => article_path(@article), :method => "put")
+form_for(:article, @article, :url => article_path(@article), :html => { :method => "put" })
 # short-style:
 form_for(@article)
 </ruby>
@@ -316,7 +324,7 @@ will create a form that submits to the articles controller inside the admin name
 form_for [:admin, :management, @article]
 </ruby>
 
-For more information on Rails' routing system and the associated conventions, please see the "routing guide":./routing_outside_in.html.
+For more information on Rails' routing system and the associated conventions, please see the "routing guide":routing.html.
 
 
 h4. How do forms with PUT or DELETE methods work?
@@ -427,7 +435,7 @@ As with other helpers, if you were to use the +select+ helper on a form builder 
 <%= f.select(:city_id, ...) %>
 </erb>
 
-WARNING: If you are using +select+ (or similar helpers such as +collection_select+, +select_tag+) to set a +belongs_to+ association you must pass the name of the foreign key (in the example above +city_id+), not the name of association itself.  If you specify +city+ instead of +city_id+ Active Record will raise an error along the lines of <pre> ActiveRecord::AssociationTypeMismatch: City(#17815740) expected, got String(#1138750) </pre> when you pass the +params+ hash to +Person.new+ or +update_attributes+. Another way of looking at this is that form helpers only edit attributes.  You should also be aware of the potential security ramifications of allowing users to edit foreign keys directly. You may wish to consider the use of +attr_protected+ and +attr_accessible+. For further details on this, see the "Ruby On Rails Security Guide":security.html#_mass_assignment.
+WARNING: If you are using +select+ (or similar helpers such as +collection_select+, +select_tag+) to set a +belongs_to+ association you must pass the name of the foreign key (in the example above +city_id+), not the name of association itself.  If you specify +city+ instead of +city_id+ Active Record will raise an error along the lines of <tt> ActiveRecord::AssociationTypeMismatch: City(#17815740) expected, got String(#1138750) </tt> when you pass the +params+ hash to +Person.new+ or +update_attributes+. Another way of looking at this is that form helpers only edit attributes.  You should also be aware of the potential security ramifications of allowing users to edit foreign keys directly. You may wish to consider the use of +attr_protected+ and +attr_accessible+. For further details on this, see the "Ruby On Rails Security Guide":security.html#_mass_assignment.
 
 h4. Option Tags from a Collection of Arbitrary Objects
 
@@ -464,7 +472,7 @@ To leverage time zone support in Rails, you have to ask your users what time zon
 
 There is also +time_zone_options_for_select+ helper for a more manual (therefore more customizable) way of doing this. Read the API documentation to learn about the possible arguments for these two methods.
 
-Rails _used_ to have a +country_select+ helper for choosing countries, but this has been extracted to the "country_select plugin":http://github.com/rails/country_select/tree/master. When using this, be aware that the exclusion or inclusion of certain names from the list can be somewhat controversial (and was the reason this functionality was extracted from rails).
+Rails _used_ to have a +country_select+ helper for choosing countries, but this has been extracted to the "country_select plugin":http://github.com/rails/country_select/tree/master. When using this, be aware that the exclusion or inclusion of certain names from the list can be somewhat controversial (and was the reason this functionality was extracted from Rails).
 
 h3. Using Date and Time Form Helpers
 
@@ -499,7 +507,7 @@ Date.civil(params[:start_date][:year].to_i, params[:start_date][:month].to_i, pa
 
 The +:prefix+ option is the key used to retrieve the hash of date components from the +params+ hash. Here it was set to +start_date+, if omitted it will default to +date+.
 
-h4. Model Object Helpers
+h4(#select-model-object-helpers). Model Object Helpers
 
 +select_date+ does not work well with forms that update or create Active Record objects as Active Record expects each element of the +params+ hash to correspond to one attribute.
 The model object helpers for dates and times submit parameters with special names,  when Active Record sees parameters with such names it knows they must be combined with the other parameters and given to a constructor appropriate to the column type. For example:
@@ -552,11 +560,11 @@ A common task is uploading some sort of file, whether it's a picture of a person
 The following two forms both upload a file.
 
 <erb>
-<% form_tag({:action => :upload}, :multipart => true) do %>
+<%= form_tag({:action => :upload}, :multipart => true) do %>
   <%= file_field_tag 'picture' %>
 <% end %>
 
-<% form_for @person, :html => {:multipart => true} do |f| %>
+<%= form_for @person, :html => {:multipart => true} do |f| %>
   <%= f.file_field :picture %>
 <% end %>
 </erb>
@@ -584,12 +592,12 @@ h4. Dealing with Ajax
 
 Unlike other forms making an asynchronous file upload form is not as simple as replacing +form_for+ with +remote_form_for+. With an Ajax form the serialization is done by JavaScript running inside the browser and since JavaScript cannot read files from your hard drive the file cannot be uploaded. The most common workaround is to use an invisible iframe that serves as the target for the form submission.
 
-h3. Customising Form Builders
+h3. Customizing Form Builders
 
 As mentioned previously the object yielded by +form_for+ and +fields_for+ is an instance of FormBuilder (or a subclass thereof). Form builders encapsulate the notion of displaying form elements for a single object. While you can of course write helpers for your forms in the usual way you can also subclass FormBuilder and add the helpers there. For example
 
 <erb>
-<% form_for @person do |f| %>
+<%= form_for @person do |f| %>
   <%= text_field_with_label f, :first_name %>
 <% end %>
 </erb>
@@ -597,7 +605,7 @@ As mentioned previously the object yielded by +form_for+ and +fields_for+ is an 
 can be replaced with
 
 <erb>
-<% form_for @person, :builder => LabellingFormBuilder do |f| %>
+<%= form_for @person, :builder => LabellingFormBuilder do |f| %>
   <%= f.text_field :first_name %>
 <% end %>
 </erb>
@@ -629,7 +637,7 @@ action for a Person model, +params[:model]+ would usually be a hash of all the a
 
 Fundamentally HTML forms don't know about any sort of structured data, all they generate is name–value pairs, where pairs are just plain strings. The arrays and hashes you see in your application are the result of some parameter naming conventions that Rails uses.
 
-TIP: You may find you can try out examples in this section faster by using the console to directly invoke Rails' parameter parser. For example <pre> ActionController::UrlEncodedPairParser.parse_query_parameters "name=fred&phone=0123456789" # => {"name"=>"fred", "phone"=>"0123456789"} </pre>
+TIP: You may find you can try out examples in this section faster by using the console to directly invoke Rails' parameter parser. For example <tt> ActionController::UrlEncodedPairParser.parse_query_parameters "name=fred&phone=0123456789" # => {"name"=>"fred", "phone"=>"0123456789"} </tt>
 
 h4. Basic Structures
 
@@ -645,7 +653,7 @@ the +params+ hash will contain
 {'person' => {'name' => 'Henry'}}
 </erb>
 
-and +params["name"]+ will retrieve the submitted value in the controller.
+and +params[:person][:name]+ will retrieve the submitted value in the controller.
 
 Hashes can be nested as many levels as required, for example
 
@@ -683,7 +691,7 @@ This would result in +params[:addresses]+ being an array of hashes with keys +li
 
 There's a restriction, however, while hashes can be nested arbitrarily, only one level of "arrayness" is allowed. Arrays can be usually replaced by hashes, for example instead of having an array of model objects one can have a hash of model objects keyed by their id, an array index or some other parameter.
 
-WARNING: Array parameters do not play well with the +check_box+ helper. According to the HTML specification unchecked checkboxes submit no value. However it is often convenient for a checkbox to always submit a value. The +check_box+ helper fakes this by creating a second hidden input with the same name. If the checkbox is unchecked only the hidden input is submitted and if it is checked then both are submitted but the value submitted by the checkbox takes precedence. When working with array parameters this duplicate submission will confuse Rails since duplicate input names are how it decides when to start a new array element. It is preferable to either use +check_box_tag+ or to use hashes instead of arrays.
+WARNING: Array parameters do not play well with the +check_box+ helper. According to the HTML specification unchecked checkboxes submit no value. However it is often convenient for a checkbox to always submit a value. The +check_box+ helper fakes this by creating an auxiliary hidden input with the same name. If the checkbox is unchecked only the hidden input is submitted and if it is checked then both are submitted but the value submitted by the checkbox takes precedence. When working with array parameters this duplicate submission will confuse Rails since duplicate input names are how it decides when to start a new array element. It is preferable to either use +check_box_tag+ or to use hashes instead of arrays.
 
 h4. Using Form Helpers
 
@@ -692,10 +700,10 @@ The previous sections did not use the Rails form helpers at all. While you can c
 You might want to render a form with a set of edit fields for each of a person's addresses. For example:
 
 <erb>
-<% form_for @person do |person_form| %>
+<%= form_for @person do |person_form| %>
   <%= person_form.text_field :name %>
   <% for address in @person.addresses %>
-    <% person_form.fields_for address, :index => address do |address_form|%>
+    <%= person_form.fields_for address, :index => address do |address_form|%>
       <%= address_form.text_field :city %>
     <% end %>
   <% end %>
@@ -718,12 +726,12 @@ This will result in a +params+ hash that looks like
 {'person' => {'name' => 'Bob', 'address' => {'23' => {'city' => 'Paris'}, '45' => {'city' => 'London'}}}}
 </ruby>
 
-Rails knows that all these inputs should be part of the person hash because you called +fields_for+ on the first form builder. By specifying an +:index+ option you're telling rails that instead of naming the inputs +person[address][city]+ it should insert that index surrounded by [] between the address and the city. If you pass an Active Record object as we did then Rails will call +to_param+ on it, which by default returns the database id. This is often useful as it is then easy to locate which Address record should be modified. You can pass numbers with some other significance, strings or even +nil+ (which will result in an array parameter being created).
+Rails knows that all these inputs should be part of the person hash because you called +fields_for+ on the first form builder. By specifying an +:index+ option you're telling Rails that instead of naming the inputs +person[address][city]+ it should insert that index surrounded by [] between the address and the city. If you pass an Active Record object as we did then Rails will call +to_param+ on it, which by default returns the database id. This is often useful as it is then easy to locate which Address record should be modified. You can pass numbers with some other significance, strings or even +nil+ (which will result in an array parameter being created).
 
 To create more intricate nestings, you can specify the first part of the input name (+person[address]+ in the previous example) explicitly, for example
 
 <erb>
-<% fields_for 'person[address][primary]', address, :index => address do |address_form| %>
+<%= fields_for 'person[address][primary]', address, :index => address do |address_form| %>
   <%= address_form.text_field :city %>
 <% end %>
 </erb>
@@ -736,10 +744,10 @@ will create inputs like
 
 As a general rule the final input name is the concatenation of the name given to +fields_for+/+form_for+, the index value and the name of the attribute. You can also pass an +:index+ option directly to helpers such as +text_field+, but it is usually less repetitive to specify this at the form builder level rather than on individual input controls.
 
-As a shortcut you can append [] to the name and omit the +:index+ option. This is the same as specifing +:index => address+ so
+As a shortcut you can append [] to the name and omit the +:index+ option. This is the same as specifying +:index => address+ so
 
 <erb>
-<% fields_for 'person[address][primary][]', address do |address_form| %>
+<%= fields_for 'person[address][primary][]', address do |address_form| %>
   <%= address_form.text_field :city %>
 <% end %>
 </erb>
@@ -750,15 +758,16 @@ h3. Building Complex Forms
 
 Many apps grow beyond simple forms editing a single object. For example when creating a Person you might want to allow the user to (on the same form) create multiple address records (home, work, etc.). When later editing that person the user should be able to add, remove or amend addresses as necessary. While this guide has shown you all the pieces necessary to handle this, Rails does not yet have a standard end-to-end way of accomplishing this, but many have come up with viable approaches. These include:
 
-* Ryan Bates' series of railscasts on "complex forms":http://railscasts.com/episodes/75
+* As of Rails 2.3, Rails includes "Nested Attributes":./2_3_release_notes.html#nested-attributes and "Nested Object Forms":./2_3_release_notes.html#nested-object-forms
+* Ryan Bates' series of Railscasts on "complex forms":http://railscasts.com/episodes/75
 * Handle Multiple Models in One Form from "Advanced Rails Recipes":http://media.pragprog.com/titles/fr_arr/multiple_models_one_form.pdf
-* Eloy Duran's "nested_params":http://github.com/alloy/complex-form-examples/tree/alloy-nested_params plugin
+* Eloy Duran's "complex-forms-examples":http://github.com/alloy/complex-form-examples/ application
 * Lance Ivy's "nested_assignment":http://github.com/cainlevy/nested_assignment/tree/master plugin and "sample application":http://github.com/cainlevy/complex-form-examples/tree/cainlevy
-* James Golick's "attribute_fu":http://github.com/giraffesoft/attribute_fu/tree plugin
+* James Golick's "attribute_fu":http://github.com/jamesgolick/attribute_fu plugin
 
 h3. Changelog
 
-"Lighthouse ticket":http://rails.lighthouseapp.com/projects/16213-rails-guides/tickets/1
+* April 6, 2010: Fixed document to validate XHTML 1.0 Strict. "Jaime Iniesta":http://jaimeiniesta.com
 
 h3. Authors
 

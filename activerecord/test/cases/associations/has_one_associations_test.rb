@@ -14,7 +14,7 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     assert_equal companies(:first_firm).account, Account.find(1)
     assert_equal Account.find(1).credit_limit, companies(:first_firm).account.credit_limit
   end
-  
+
   def test_has_one_cache_nils
     firm = companies(:another_firm)
     assert_queries(1) { assert_nil firm.account }
@@ -96,7 +96,7 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     assert_nil Account.find(old_account_id).firm_id
   end
 
-  def test_association_changecalls_delete
+  def test_association_change_calls_delete
     companies(:first_firm).deletable_account = Account.new
     assert_equal [], Account.destroyed_account_ids[companies(:first_firm).id]
   end
@@ -149,7 +149,7 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     num_accounts = Account.count
 
     firm = Firm.find(1)
-    assert !firm.account.nil?
+    assert_not_nil firm.account
     account_id = firm.account.id
     assert_equal [], Account.destroyed_account_ids[firm.id]
 
@@ -162,7 +162,7 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     num_accounts = Account.count
 
     firm = ExclusivelyDependentFirm.find(9)
-    assert !firm.account.nil?
+    assert_not_nil firm.account
     account_id = firm.account.id
     assert_equal [], Account.destroyed_account_ids[firm.id]
 
@@ -177,22 +177,21 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     assert_nothing_raised { firm.destroy }
   end
 
-  def test_succesful_build_association
+  def test_dependence_with_restrict
+    firm = RestrictedFirm.new(:name => 'restrict')
+    firm.save!
+    account = firm.create_account(:credit_limit => 10)
+    assert_not_nil firm.account
+    assert_raise(ActiveRecord::DeleteRestrictionError) { firm.destroy }
+  end
+
+  def test_successful_build_association
     firm = Firm.new("name" => "GlobalMegaCorp")
     firm.save
 
     account = firm.build_account("credit_limit" => 1000)
     assert account.save
     assert_equal account, firm.account
-  end
-
-  def test_failing_build_association
-    firm = Firm.new("name" => "GlobalMegaCorp")
-    firm.save
-
-    account = firm.build_account
-    assert !account.save
-    assert_equal "can't be empty", account.errors.on("credit_limit")
   end
 
   def test_build_association_twice_without_saving_affects_nothing
@@ -228,7 +227,7 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     assert_equal account, firm.account
     assert !account.save
     assert_equal account, firm.account
-    assert_equal "can't be empty", account.errors.on("credit_limit")
+    assert_equal ["can't be empty"], account.errors["credit_limit"]
   end
 
   def test_create
@@ -247,14 +246,14 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
   def test_dependence_with_missing_association
     Account.destroy_all
     firm = Firm.find(1)
-    assert firm.account.nil?
+    assert_nil firm.account
     firm.destroy
   end
 
   def test_dependence_with_missing_association_and_nullify
     Account.destroy_all
     firm = DependentFirm.find(:first)
-    assert firm.account.nil?
+    assert_nil firm.account
     firm.destroy
   end
 
@@ -326,5 +325,10 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
     account = companies(:first_firm).create_account_limit_500_with_hash_conditions
     assert       !account.new_record?
     assert_equal 500, account.credit_limit
+  end
+
+  def test_attributes_are_being_set_when_initialized_from_has_one_association_with_where_clause
+    new_account = companies(:first_firm).build_account(:firm_name => 'Account')
+    assert_equal new_account.firm_name, "Account"
   end
 end

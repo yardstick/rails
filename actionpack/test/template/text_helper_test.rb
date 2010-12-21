@@ -1,26 +1,26 @@
 # encoding: us-ascii
 require 'abstract_unit'
 require 'testing_sandbox'
-begin
-  require 'redcloth'
-rescue LoadError
-  $stderr.puts "Skipping textilize tests. `gem install RedCloth` to enable."
-end
 
 class TextHelperTest < ActionView::TestCase
   tests ActionView::Helpers::TextHelper
   include TestingSandbox
 
   def setup
+    super
     # This simulates the fact that instance variables are reset every time
     # a view is rendered.  The cycle helper depends on this behavior.
     @_cycles = nil if (defined? @_cycles)
   end
 
   def test_concat
-    self.output_buffer = ActiveSupport::SafeBuffer.new('foo')
+    self.output_buffer = 'foo'
     assert_equal 'foobar', concat('bar')
     assert_equal 'foobar', output_buffer
+  end
+
+  def test_simple_format_should_be_html_safe
+    assert simple_format("<b> test with html tags </b>").html_safe?
   end
 
   def test_simple_format
@@ -40,17 +40,25 @@ class TextHelperTest < ActionView::TestCase
      assert_equal %Q(<p class="test">para 1</p>\n\n<p class="test">para 2</p>), simple_format("para 1\n\npara 2", :class => 'test')
   end
 
-  def test_simple_format_should_be_html_safe
-    assert simple_format("<b> test with html tags </b>").html_safe?
+  def test_simple_format_should_sanitize_input_when_sanitize_option_is_not_false
+    assert_equal "<p><b> test with unsafe string </b></p>", simple_format("<b> test with unsafe string </b><script>code!</script>")
   end
 
-  def test_simple_format_should_not_escape_safe_input
-    assert_equal "<p><b> test with safe string </b></p>", simple_format("<b> test with safe string </b>".html_safe)
+  def test_simple_format_should_not_sanitize_input_when_sanitize_option_is_false
+    assert_equal "<p><b> test with unsafe string </b><script>code!</script></p>", simple_format("<b> test with unsafe string </b><script>code!</script>", {}, :sanitize => false)
+  end
+
+  def test_truncate_should_not_be_html_safe
+    assert !truncate("Hello World!", :length => 12).html_safe?
   end
 
   def test_truncate
     assert_equal "Hello World!", truncate("Hello World!", :length => 12)
     assert_equal "Hello Wor...", truncate("Hello World!!", :length => 12)
+  end
+
+  def test_truncate_should_not_escape_input
+    assert_equal "Hello <sc...", truncate("Hello <script>code!</script>World!!", :length => 12)
   end
 
   def test_truncate_should_use_default_length_of_30
@@ -62,6 +70,9 @@ class TextHelperTest < ActionView::TestCase
     assert_equal "This is a string that wil[...]", truncate("This is a string that will go longer then the default truncate length of 30", :omission => "[...]")
     assert_equal "Hello W...", truncate("Hello World!", :length => 10)
     assert_equal "Hello[...]", truncate("Hello World!", :omission => "[...]", :length => 10)
+    assert_equal "Hello[...]", truncate("Hello Big World!", :omission => "[...]", :length => 13, :separator => ' ')
+    assert_equal "Hello Big[...]", truncate("Hello Big World!", :omission => "[...]", :length => 14, :separator => ' ')
+    assert_equal "Hello Big[...]", truncate("Hello Big World!", :omission => "[...]", :length => 15, :separator => ' ')
   end
 
   if RUBY_VERSION < '1.9.0'
@@ -76,15 +87,20 @@ class TextHelperTest < ActionView::TestCase
     end
   else
     def test_truncate_multibyte
-      assert_equal "\354\225\210\353\205\225\355...",
-        truncate("\354\225\210\353\205\225\355\225\230\354\204\270\354\232\224", :length => 10)
+      # .mb_chars always returns a UTF-8 String.
+      # assert_equal "\354\225\210\353\205\225\355...",
+      #   truncate("\354\225\210\353\205\225\355\225\230\354\204\270\354\232\224", :length => 10)
 
       assert_equal "\354\225\204\353\246\254\353\236\221 \354\225\204\353\246\254 ...".force_encoding('UTF-8'),
         truncate("\354\225\204\353\246\254\353\236\221 \354\225\204\353\246\254 \354\225\204\353\235\274\353\246\254\354\230\244".force_encoding('UTF-8'), :length => 10)
     end
   end
 
-  def test_highlighter
+  def test_highlight_should_be_html_safe
+    assert highlight("This is a beautiful morning", "beautiful").html_safe?
+  end
+
+  def test_highlight
     assert_equal(
       "This is a <strong class=\"highlight\">beautiful</strong> morning",
       highlight("This is a beautiful morning", "beautiful")
@@ -106,6 +122,20 @@ class TextHelperTest < ActionView::TestCase
     )
 
     assert_equal '   ', highlight('   ', 'blank text is returned verbatim')
+  end
+
+  def test_highlight_should_sanitize_input
+    assert_equal(
+      "This is a <strong class=\"highlight\">beautiful</strong> morning",
+      highlight("This is a beautiful morning<script>code!</script>", "beautiful")
+    )
+  end
+
+  def test_highlight_should_not_sanitize_if_sanitize_option_if_false
+    assert_equal(
+      "This is a <strong class=\"highlight\">beautiful</strong> morning<script>code!</script>",
+      highlight("This is a beautiful morning<script>code!</script>", "beautiful", :sanitize => false)
+    )
   end
 
   def test_highlight_with_regexp
@@ -154,7 +184,7 @@ class TextHelperTest < ActionView::TestCase
       highlight("<p class=\"beautiful\">This is a beautiful morning, but also a beautiful day</p>", "beautiful")
     )
     assert_equal(
-      "<p>This is a <strong class=\"highlight\">beautiful</strong> <a href=\"http://example.com/beautiful\#top?what=beautiful%20morning&when=now+then\">morning</a>, but also a <strong class=\"highlight\">beautiful</strong> day</p>",
+      "<p>This is a <strong class=\"highlight\">beautiful</strong> <a href=\"http://example.com/beautiful#top?what=beautiful%20morning&amp;when=now+then\">morning</a>, but also a <strong class=\"highlight\">beautiful</strong> day</p>",
       highlight("<p>This is a beautiful <a href=\"http://example.com/beautiful\#top?what=beautiful%20morning&when=now+then\">morning</a>, but also a beautiful day</p>", "beautiful")
     )
   end
@@ -164,6 +194,10 @@ class TextHelperTest < ActionView::TestCase
     assert_equal("This is a...", excerpt("This is a beautiful morning", "this", 5))
     assert_equal("...iful morning", excerpt("This is a beautiful morning", "morning", 5))
     assert_nil excerpt("This is a beautiful morning", "day")
+  end
+
+  def test_excerpt_should_not_be_html_safe
+    assert !excerpt('This is a beautiful! morning', 'beautiful', 5).html_safe?
   end
 
   def test_excerpt_in_borderline_cases
@@ -210,7 +244,8 @@ class TextHelperTest < ActionView::TestCase
   else
     def test_excerpt_with_utf8
       assert_equal("...\357\254\203ciency could not be...".force_encoding('UTF-8'), excerpt("That's why e\357\254\203ciency could not be helped".force_encoding('UTF-8'), 'could', 8))
-      assert_equal("...\203ciency could not be...", excerpt("That's why e\357\254\203ciency could not be helped", 'could', 8))
+      # .mb_chars always returns UTF-8, even in 1.9. This is not great, but it's how it works. Let's work this out.
+      # assert_equal("...\203ciency could not be...", excerpt("That's why e\357\254\203ciency could not be helped".force_encoding("BINARY"), 'could', 8))
     end
   end
 
@@ -271,12 +306,26 @@ class TextHelperTest < ActionView::TestCase
     end
   end
 
-  def generate_result(link_text, href = nil)
+  def generate_result(link_text, href = nil, escape = false)
     href ||= link_text
-    %{<a href="#{CGI::escapeHTML href}">#{CGI::escapeHTML link_text}</a>}
+    if escape
+      %{<a href="#{CGI::escapeHTML href}">#{CGI::escapeHTML link_text}</a>}
+    else
+      %{<a href="#{href}">#{link_text}</a>}
+    end
   end
 
-  def test_auto_linking
+  def test_auto_link_should_be_html_safe
+    email_raw    = 'santiago@wyeworks.com'
+    link_raw     = 'http://www.rubyonrails.org'
+
+    assert auto_link(nil).html_safe?
+    assert auto_link('').html_safe?
+    assert auto_link("#{link_raw} #{link_raw} #{link_raw}").html_safe?
+    assert auto_link("hello #{email_raw}").html_safe?
+  end
+
+  def test_auto_link
     email_raw    = 'david@loudthinking.com'
     email_result = %{<a href="mailto:#{email_raw}">#{email_raw}</a>}
     link_raw     = 'http://www.rubyonrails.com'
@@ -368,14 +417,25 @@ class TextHelperTest < ActionView::TestCase
     assert_equal %(<p>#{link10_result} Link</p>), auto_link("<p>#{link10_raw} Link</p>")
   end
 
+  def test_auto_link_should_sanitize_input_when_sanitize_option_is_not_false
+    link_raw     = %{http://www.rubyonrails.com?id=1&num=2}
+    assert_equal %{<a href="http://www.rubyonrails.com?id=1&num=2">http://www.rubyonrails.com?id=1&num=2</a>}, auto_link(link_raw)
+  end
+
+  def test_auto_link_should_not_sanitize_input_when_sanitize_option_is_false
+    link_raw     = %{http://www.rubyonrails.com?id=1&num=2}
+    assert_equal %{<a href="http://www.rubyonrails.com?id=1&num=2">http://www.rubyonrails.com?id=1&num=2</a>}, auto_link(link_raw, :sanitize => false)
+  end
+
   def test_auto_link_other_protocols
     ftp_raw = 'ftp://example.com/file.txt'
     assert_equal %(Download #{generate_result(ftp_raw)}), auto_link("Download #{ftp_raw}")
-    
+
     file_scheme   = 'file:///home/username/RomeoAndJuliet.pdf'
     z39_scheme    = 'z39.50r://host:696/db'
     chrome_scheme = 'chrome://package/section/path'
     view_source   = 'view-source:http://en.wikipedia.org/wiki/URI_scheme'
+    assert_equal generate_result(file_scheme), auto_link(file_scheme)
     assert_equal generate_result(z39_scheme), auto_link(z39_scheme)
     assert_equal generate_result(chrome_scheme), auto_link(chrome_scheme)
     assert_equal generate_result(view_source), auto_link(view_source)
@@ -392,7 +452,7 @@ class TextHelperTest < ActionView::TestCase
     assert_equal linked3, auto_link(linked3)
     assert_equal linked4, auto_link(linked4)
     assert_equal linked5, auto_link(linked5)
-    
+
     linked_email = %Q(<a href="mailto:david@loudthinking.com">Mail me</a>)
     assert_equal linked_email, auto_link(linked_email)
   end
@@ -433,11 +493,11 @@ class TextHelperTest < ActionView::TestCase
 
     assert_equal %(<p><a href="#{url}">#{url[0...7]}...</a><br /><a href="mailto:#{email}">#{email[0...7]}...</a><br /></p>), auto_link("<p>#{url}<br />#{email}<br /></p>") { |url| truncate(url, :length => 10) }
   end
-  
+
   def test_auto_link_with_block_with_html
     pic = "http://example.com/pic.png"
     url = "http://example.com/album?a&b=c"
-    
+
     assert_equal %(My pic: <a href="#{pic}"><img src="#{pic}" width="160px"></a> -- full album here #{generate_result(url)}), auto_link("My pic: #{pic} -- full album here #{url}") { |link|
       if link =~ /\.(jpg|gif|png|bmp|tif)$/i
         raw %(<img src="#{link}" width="160px">)
@@ -452,7 +512,7 @@ class TextHelperTest < ActionView::TestCase
       auto_link("Welcome to my new blog at http://www.myblog.com/. Please e-mail me at me@email.com.",
                 :link => :all, :html => { :class => "menu", :target => "_blank" })
   end
-  
+
   def test_auto_link_with_multiple_trailing_punctuations
     url = "http://youtube.com"
     url_result = generate_result(url)
@@ -575,23 +635,5 @@ class TextHelperTest < ActionView::TestCase
     assert_equal("blue", cycle("red", "blue"))
     assert_equal("red", cycle("red", "blue"))
     assert_equal(%w{Specialized Fuji Giant}, @cycles)
-  end
-
-  if defined? RedCloth
-    def test_textilize
-      assert_equal("<p><strong>This is Textile!</strong>  Rejoice!</p>", textilize("*This is Textile!*  Rejoice!"))
-    end
-
-    def test_textilize_with_blank
-      assert_equal("", textilize(""))
-    end
-
-    def test_textilize_with_options
-      assert_equal("<p>This is worded &lt;strong&gt;strongly&lt;/strong&gt;</p>", textilize("This is worded <strong>strongly</strong>", :filter_html))
-    end
-
-    def test_textilize_with_hard_breaks
-      assert_equal("<p>This is one scary world.<br />\n True.</p>", textilize("This is one scary world.\n True."))
-    end
   end
 end

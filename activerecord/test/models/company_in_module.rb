@@ -1,3 +1,5 @@
+require 'active_support/core_ext/object/with_options'
+
 module MyApplication
   module Business
     class Company < ActiveRecord::Base
@@ -69,10 +71,13 @@ module MyApplication
         i.belongs_to :nested_unqualified_billing_firm, :class_name => 'Nested::Firm'
       end
 
+      validate :check_empty_credit_limit
+
       protected
-        def validate
-          errors.add_on_empty "credit_limit"
-        end
+
+      def check_empty_credit_limit
+        errors.add_on_empty "credit_limit"
+      end
     end
   end
 end

@@ -13,8 +13,8 @@ class CallbackDeveloper < ActiveRecord::Base
     end
 
     def define_callback_method(callback_method)
-      define_method("#{callback_method}_method") do |model|
-        model.history << [callback_method, :method]
+      define_method(callback_method) do
+        self.history << [callback_method, :method]
       end
     end
 
@@ -27,26 +27,25 @@ class CallbackDeveloper < ActiveRecord::Base
     end
   end
 
-  ActiveRecord::Callbacks::CALLBACKS.each do |callback_method|
-    callback_method_sym = callback_method.to_sym
-    define_callback_method(callback_method_sym)
-    send(callback_method, callback_method_sym)
-    send(callback_method, callback_string(callback_method_sym))
-    send(callback_method, callback_proc(callback_method_sym))
-    send(callback_method, callback_object(callback_method_sym))
-    send(callback_method) { |model| model.history << [callback_method_sym, :block] }
+  ActiveSupport::Deprecation.silence do
+    ActiveRecord::Callbacks::CALLBACKS.each do |callback_method|
+      next if callback_method.to_s =~ /^around_/
+      define_callback_method(callback_method)
+      send(callback_method, callback_string(callback_method))
+      send(callback_method, callback_proc(callback_method))
+      send(callback_method, callback_object(callback_method))
+      send(callback_method) { |model| model.history << [callback_method, :block] }
+    end
   end
 
   def history
     @history ||= []
   end
+end
 
-  # after_initialize and after_find are invoked only if instance methods have been defined.
-  def after_initialize
-  end
-
-  def after_find
-  end
+class CallbackDeveloperWithFalseValidation < CallbackDeveloper
+  before_validation proc { |model| model.history << [:before_validation, :returning_false]; return false }
+  before_validation proc { |model| model.history << [:before_validation, :should_never_get_here] }
 end
 
 class ParentDeveloper < ActiveRecord::Base
@@ -108,14 +107,34 @@ class ImmutableMethodDeveloper < ActiveRecord::Base
     @cancelled == true
   end
 
-  def before_save
+  before_save do
     @cancelled = true
     false
   end
 
-  def before_destroy
+  before_destroy do
     @cancelled = true
     false
+  end
+end
+
+class OnCallbacksDeveloper < ActiveRecord::Base
+  set_table_name 'developers'
+
+  before_validation { history << :before_validation }
+  before_validation(:on => :create){ history << :before_validation_on_create }
+  before_validation(:on => :update){ history << :before_validation_on_update }
+
+  validate do
+    history << :validate
+  end
+
+  after_validation { history << :after_validation }
+  after_validation(:on => :create){ history << :after_validation_on_create }
+  after_validation(:on => :update){ history << :after_validation_on_update }
+
+  def history
+    @history ||= []
   end
 end
 
@@ -125,15 +144,15 @@ class CallbackCancellationDeveloper < ActiveRecord::Base
   attr_reader   :after_save_called, :after_create_called, :after_update_called, :after_destroy_called
   attr_accessor :cancel_before_save, :cancel_before_create, :cancel_before_update, :cancel_before_destroy
 
-  def before_save;    !@cancel_before_save;    end
-  def before_create;  !@cancel_before_create;  end
-  def before_update;  !@cancel_before_update;  end
-  def before_destroy; !@cancel_before_destroy; end
+  before_save    {defined?(@cancel_before_save) ? !@cancel_before_save : false}
+  before_create  { !@cancel_before_create  }
+  before_update  { !@cancel_before_update  }
+  before_destroy { !@cancel_before_destroy }
 
-  def after_save;      @after_save_called    = true; end
-  def after_update;    @after_update_called  = true; end
-  def after_create;    @after_create_called  = true; end
-  def after_destroy;   @after_destroy_called = true; end
+  after_save    { @after_save_called    = true }
+  after_update  { @after_update_called  = true }
+  after_create  { @after_create_called  = true }
+  after_destroy { @after_destroy_called = true }
 end
 
 class CallbacksTest < ActiveRecord::TestCase
@@ -142,6 +161,7 @@ class CallbacksTest < ActiveRecord::TestCase
   def test_initialize
     david = CallbackDeveloper.new
     assert_equal [
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
@@ -152,10 +172,12 @@ class CallbacksTest < ActiveRecord::TestCase
   def test_find
     david = CallbackDeveloper.find(1)
     assert_equal [
+      [ :after_find,            :method ],
       [ :after_find,            :string ],
       [ :after_find,            :proc   ],
       [ :after_find,            :object ],
       [ :after_find,            :block  ],
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
@@ -167,26 +189,21 @@ class CallbacksTest < ActiveRecord::TestCase
     david = CallbackDeveloper.new
     david.valid?
     assert_equal [
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
       [ :after_initialize,            :block  ],
+      [ :before_validation,           :method ],
       [ :before_validation,           :string ],
       [ :before_validation,           :proc   ],
       [ :before_validation,           :object ],
       [ :before_validation,           :block  ],
-      [ :before_validation_on_create, :string ],
-      [ :before_validation_on_create, :proc   ],
-      [ :before_validation_on_create, :object ],
-      [ :before_validation_on_create, :block  ],
+      [ :after_validation,            :method ],
       [ :after_validation,            :string ],
       [ :after_validation,            :proc   ],
       [ :after_validation,            :object ],
       [ :after_validation,            :block  ],
-      [ :after_validation_on_create,  :string ],
-      [ :after_validation_on_create,  :proc   ],
-      [ :after_validation_on_create,  :object ],
-      [ :after_validation_on_create,  :block  ]
     ], david.history
   end
 
@@ -194,68 +211,63 @@ class CallbacksTest < ActiveRecord::TestCase
     david = CallbackDeveloper.find(1)
     david.valid?
     assert_equal [
+      [ :after_find,            :method ],
       [ :after_find,            :string ],
       [ :after_find,            :proc   ],
       [ :after_find,            :object ],
       [ :after_find,            :block  ],
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
       [ :after_initialize,            :block  ],
+      [ :before_validation,           :method ],
       [ :before_validation,           :string ],
       [ :before_validation,           :proc   ],
       [ :before_validation,           :object ],
       [ :before_validation,           :block  ],
-      [ :before_validation_on_update, :string ],
-      [ :before_validation_on_update, :proc   ],
-      [ :before_validation_on_update, :object ],
-      [ :before_validation_on_update, :block  ],
+      [ :after_validation,            :method ],
       [ :after_validation,            :string ],
       [ :after_validation,            :proc   ],
       [ :after_validation,            :object ],
       [ :after_validation,            :block  ],
-      [ :after_validation_on_update,  :string ],
-      [ :after_validation_on_update,  :proc   ],
-      [ :after_validation_on_update,  :object ],
-      [ :after_validation_on_update,  :block  ]
     ], david.history
   end
 
   def test_create
     david = CallbackDeveloper.create('name' => 'David', 'salary' => 1000000)
     assert_equal [
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
       [ :after_initialize,            :block  ],
+      [ :before_validation,           :method ],
       [ :before_validation,           :string ],
       [ :before_validation,           :proc   ],
       [ :before_validation,           :object ],
       [ :before_validation,           :block  ],
-      [ :before_validation_on_create, :string ],
-      [ :before_validation_on_create, :proc   ],
-      [ :before_validation_on_create, :object ],
-      [ :before_validation_on_create, :block  ],
+      [ :after_validation,            :method ],
       [ :after_validation,            :string ],
       [ :after_validation,            :proc   ],
       [ :after_validation,            :object ],
       [ :after_validation,            :block  ],
-      [ :after_validation_on_create,  :string ],
-      [ :after_validation_on_create,  :proc   ],
-      [ :after_validation_on_create,  :object ],
-      [ :after_validation_on_create,  :block  ],
+      [ :before_save,                 :method ],
       [ :before_save,                 :string ],
       [ :before_save,                 :proc   ],
       [ :before_save,                 :object ],
       [ :before_save,                 :block  ],
+      [ :before_create,               :method ],
       [ :before_create,               :string ],
       [ :before_create,               :proc   ],
       [ :before_create,               :object ],
       [ :before_create,               :block  ],
+      [ :after_create,                :method ],
       [ :after_create,                :string ],
       [ :after_create,                :proc   ],
       [ :after_create,                :object ],
       [ :after_create,                :block  ],
+      [ :after_save,                  :method ],
       [ :after_save,                  :string ],
       [ :after_save,                  :proc   ],
       [ :after_save,                  :object ],
@@ -263,50 +275,73 @@ class CallbacksTest < ActiveRecord::TestCase
     ], david.history
   end
 
-  def test_save
+  def test_validate_on_create
+    david = OnCallbacksDeveloper.create('name' => 'David', 'salary' => 1000000)
+    assert_equal [
+      :before_validation,
+      :before_validation_on_create,
+      :validate,
+      :after_validation,
+      :after_validation_on_create
+    ], david.history
+  end
+
+  def test_update
     david = CallbackDeveloper.find(1)
     david.save
     assert_equal [
+      [ :after_find,            :method ],
       [ :after_find,            :string ],
       [ :after_find,            :proc   ],
       [ :after_find,            :object ],
       [ :after_find,            :block  ],
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
       [ :after_initialize,            :block  ],
+      [ :before_validation,           :method ],
       [ :before_validation,           :string ],
       [ :before_validation,           :proc   ],
       [ :before_validation,           :object ],
       [ :before_validation,           :block  ],
-      [ :before_validation_on_update, :string ],
-      [ :before_validation_on_update, :proc   ],
-      [ :before_validation_on_update, :object ],
-      [ :before_validation_on_update, :block  ],
+      [ :after_validation,            :method ],
       [ :after_validation,            :string ],
       [ :after_validation,            :proc   ],
       [ :after_validation,            :object ],
       [ :after_validation,            :block  ],
-      [ :after_validation_on_update,  :string ],
-      [ :after_validation_on_update,  :proc   ],
-      [ :after_validation_on_update,  :object ],
-      [ :after_validation_on_update,  :block  ],
+      [ :before_save,                 :method ],
       [ :before_save,                 :string ],
       [ :before_save,                 :proc   ],
       [ :before_save,                 :object ],
       [ :before_save,                 :block  ],
+      [ :before_update,               :method ],
       [ :before_update,               :string ],
       [ :before_update,               :proc   ],
       [ :before_update,               :object ],
       [ :before_update,               :block  ],
+      [ :after_update,                :method ],
       [ :after_update,                :string ],
       [ :after_update,                :proc   ],
       [ :after_update,                :object ],
       [ :after_update,                :block  ],
+      [ :after_save,                  :method ],
       [ :after_save,                  :string ],
       [ :after_save,                  :proc   ],
       [ :after_save,                  :object ],
       [ :after_save,                  :block  ]
+    ], david.history
+  end
+
+  def test_validate_on_update
+    david = OnCallbacksDeveloper.find(1)
+    david.save
+    assert_equal [
+      :before_validation,
+      :before_validation_on_update,
+      :validate,
+      :after_validation,
+      :after_validation_on_update
     ], david.history
   end
 
@@ -314,18 +349,22 @@ class CallbacksTest < ActiveRecord::TestCase
     david = CallbackDeveloper.find(1)
     david.destroy
     assert_equal [
+      [ :after_find,            :method ],
       [ :after_find,            :string ],
       [ :after_find,            :proc   ],
       [ :after_find,            :object ],
       [ :after_find,            :block  ],
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
       [ :after_initialize,            :block  ],
+      [ :before_destroy,              :method ],
       [ :before_destroy,              :string ],
       [ :before_destroy,              :proc   ],
       [ :before_destroy,              :object ],
       [ :before_destroy,              :block  ],
+      [ :after_destroy,               :method ],
       [ :after_destroy,               :string ],
       [ :after_destroy,               :proc   ],
       [ :after_destroy,               :object ],
@@ -337,10 +376,12 @@ class CallbacksTest < ActiveRecord::TestCase
     david = CallbackDeveloper.find(1)
     CallbackDeveloper.delete(david.id)
     assert_equal [
+      [ :after_find,            :method ],
       [ :after_find,            :string ],
       [ :after_find,            :proc   ],
       [ :after_find,            :object ],
       [ :after_find,            :block  ],
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
@@ -401,25 +442,31 @@ class CallbacksTest < ActiveRecord::TestCase
   end
   private :assert_save_callbacks_not_called
 
-  def test_zzz_callback_returning_false # must be run last since we modify CallbackDeveloper
-    david = CallbackDeveloper.find(1)
-    CallbackDeveloper.before_validation proc { |model| model.history << [:before_validation, :returning_false]; return false }
-    CallbackDeveloper.before_validation proc { |model| model.history << [:before_validation, :should_never_get_here] }
+  def test_callback_returning_false
+    david = CallbackDeveloperWithFalseValidation.find(1)
     david.save
     assert_equal [
+      [ :after_find,            :method ],
       [ :after_find,            :string ],
       [ :after_find,            :proc   ],
       [ :after_find,            :object ],
       [ :after_find,            :block  ],
+      [ :after_initialize,            :method ],
       [ :after_initialize,            :string ],
       [ :after_initialize,            :proc   ],
       [ :after_initialize,            :object ],
       [ :after_initialize,            :block  ],
+      [ :before_validation,           :method ],
       [ :before_validation,           :string ],
       [ :before_validation,           :proc   ],
       [ :before_validation,           :object ],
       [ :before_validation,           :block  ],
-      [ :before_validation, :returning_false  ]
+      [ :before_validation, :returning_false  ],
+      [ :after_rollback, :block  ],
+      [ :after_rollback, :object ],
+      [ :after_rollback, :proc   ],
+      [ :after_rollback, :string ],
+      [ :after_rollback, :method ],
     ], david.history
   end
 

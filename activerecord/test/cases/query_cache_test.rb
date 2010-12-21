@@ -1,14 +1,16 @@
 require "cases/helper"
 require 'models/topic'
-require 'models/reply'
 require 'models/task'
-require 'models/course'
 require 'models/category'
 require 'models/post'
 
 
 class QueryCacheTest < ActiveRecord::TestCase
   fixtures :tasks, :topics, :categories, :posts, :categories_posts
+
+  def setup
+    Task.connection.clear_query_cache
+  end
 
   def test_find_queries
     assert_queries(2) { Task.find(1); Task.find(1) }
@@ -52,8 +54,13 @@ class QueryCacheTest < ActiveRecord::TestCase
     require 'sqlite3/version' if current_adapter?(:SQLite3Adapter)
 
     Task.cache do
-      if current_adapter?(:SQLite3Adapter) && SQLite3::Version::VERSION > '1.2.5'
-        assert_instance_of Fixnum, Task.connection.select_value("SELECT count(*) AS count_all FROM tasks")
+      # Oracle adapter returns count() as Fixnum or Float
+      if current_adapter?(:OracleAdapter)
+        assert_kind_of Numeric, Task.connection.select_value("SELECT count(*) AS count_all FROM tasks")
+      elsif current_adapter?(:SQLite3Adapter) && SQLite3::Version::VERSION > '1.2.5' or current_adapter?(:Mysql2Adapter)
+        # Future versions of the sqlite3 adapter will return numeric
+        assert_instance_of Fixnum,
+         Task.connection.select_value("SELECT count(*) AS count_all FROM tasks")
       else
         assert_instance_of String, Task.connection.select_value("SELECT count(*) AS count_all FROM tasks")
       end

@@ -13,7 +13,10 @@ require 'models/post'
 require 'models/reader'
 require 'models/ship'
 require 'models/ship_part'
+require 'models/tag'
+require 'models/tagging'
 require 'models/treasure'
+require 'models/company'
 
 class TestAutosaveAssociationsInGeneral < ActiveRecord::TestCase
   def test_autosave_should_be_a_valid_option_for_has_one
@@ -69,6 +72,8 @@ class TestAutosaveAssociationsInGeneral < ActiveRecord::TestCase
 end
 
 class TestDefaultAutosaveAssociationOnAHasOneAssociation < ActiveRecord::TestCase
+  fixtures :companies, :accounts
+
   def test_should_save_parent_but_not_invalid_child
     firm = Firm.new(:name => 'GlobalMegaCorp')
     assert firm.valid?
@@ -89,7 +94,7 @@ class TestDefaultAutosaveAssociationOnAHasOneAssociation < ActiveRecord::TestCas
     assert !firm.account.valid?
     assert !firm.valid?
     assert !firm.save
-    assert_equal "is invalid", firm.errors.on("account")
+    assert_equal ["is invalid"], firm.errors["account"]
   end
 
   def test_save_succeeds_for_invalid_has_one_with_validate_false
@@ -168,6 +173,8 @@ class TestDefaultAutosaveAssociationOnAHasOneAssociation < ActiveRecord::TestCas
 end
 
 class TestDefaultAutosaveAssociationOnABelongsToAssociation < ActiveRecord::TestCase
+  fixtures :companies, :posts, :tags, :taggings
+
   def test_should_save_parent_but_not_invalid_child
     client = Client.new(:name => 'Joe (the Plumber)')
     assert client.valid?
@@ -180,17 +187,19 @@ class TestDefaultAutosaveAssociationOnABelongsToAssociation < ActiveRecord::Test
   end
 
   def test_save_fails_for_invalid_belongs_to
-    assert log = AuditLog.create(:developer_id => 0, :message => "")
+    # Oracle saves empty string as NULL therefore :message changed to one space
+    assert log = AuditLog.create(:developer_id => 0, :message => " ")
 
     log.developer = Developer.new
     assert !log.developer.valid?
     assert !log.valid?
     assert !log.save
-    assert_equal "is invalid", log.errors.on("developer")
+    assert_equal ["is invalid"], log.errors["developer"]
   end
 
   def test_save_succeeds_for_invalid_belongs_to_with_validate_false
-    assert log = AuditLog.create(:developer_id => 0, :message=> "")
+    # Oracle saves empty string as NULL therefore :message changed to one space
+    assert log = AuditLog.create(:developer_id => 0, :message=> " ")
 
     log.unvalidated_developer = Developer.new
     assert !log.unvalidated_developer.valid?
@@ -240,8 +249,8 @@ class TestDefaultAutosaveAssociationOnABelongsToAssociation < ActiveRecord::Test
     assert_equal customer1, order.billing
     assert_equal customer2, order.shipping
 
-    assert_equal num_orders +1, Order.count
-    assert_equal num_customers +2, Customer.count
+    assert_equal num_orders + 1, Order.count
+    assert_equal num_customers + 2, Customer.count
   end
 
   def test_store_association_in_two_relations_with_one_save
@@ -259,8 +268,8 @@ class TestDefaultAutosaveAssociationOnABelongsToAssociation < ActiveRecord::Test
     assert_equal customer, order.billing
     assert_equal customer, order.shipping
 
-    assert_equal num_orders +1, Order.count
-    assert_equal num_customers +1, Customer.count
+    assert_equal num_orders + 1, Order.count
+    assert_equal num_customers + 1, Customer.count
   end
 
   def test_store_association_in_two_relations_with_one_save_in_existing_object
@@ -278,8 +287,8 @@ class TestDefaultAutosaveAssociationOnABelongsToAssociation < ActiveRecord::Test
     assert_equal customer, order.billing
     assert_equal customer, order.shipping
 
-    assert_equal num_orders +1, Order.count
-    assert_equal num_customers +1, Customer.count
+    assert_equal num_orders + 1, Order.count
+    assert_equal num_customers + 1, Customer.count
   end
 
   def test_store_association_in_two_relations_with_one_save_in_existing_object_with_values
@@ -302,8 +311,14 @@ class TestDefaultAutosaveAssociationOnABelongsToAssociation < ActiveRecord::Test
     assert_equal customer, order.billing
     assert_equal customer, order.shipping
 
-    assert_equal num_orders +1, Order.count
-    assert_equal num_customers +2, Customer.count
+    assert_equal num_orders + 1, Order.count
+    assert_equal num_customers + 2, Customer.count
+  end
+
+  def test_store_association_with_a_polymorphic_relationship
+    num_tagging = Tagging.count
+    tags(:misc).create_tagging(:taggable => posts(:thinking))
+    assert_equal num_tagging + 1, Tagging.count
   end
 end
 
@@ -357,7 +372,7 @@ class TestDefaultAutosaveAssociationOnAHasManyAssociation < ActiveRecord::TestCa
 
     assert firm.save
     assert !client.new_record?
-    assert_equal no_of_clients+1, Client.count
+    assert_equal no_of_clients + 1, Client.count
   end
 
   def test_invalid_build
@@ -388,8 +403,8 @@ class TestDefaultAutosaveAssociationOnAHasManyAssociation < ActiveRecord::TestCa
     assert !new_firm.new_record?
     assert !c.new_record?
     assert_equal new_firm, c.firm
-    assert_equal no_of_firms+1, Firm.count      # Firm was saved to database.
-    assert_equal no_of_clients+2, Client.count  # Clients were saved to database.
+    assert_equal no_of_firms + 1, Firm.count      # Firm was saved to database.
+    assert_equal no_of_clients + 2, Client.count  # Clients were saved to database.
 
     assert_equal 2, new_firm.clients_of_firm.size
     assert_equal 2, new_firm.clients_of_firm(true).size
@@ -670,7 +685,7 @@ class TestDestroyAsPartOfAutosaveAssociation < ActiveRecord::TestCase
       end
       assert_difference("#{association_name.classify}.count", -2) { @pirate.save! }
     end
-    
+
     define_method("test_should_skip_validation_on_the_#{association_name}_association_if_destroyed") do
       @pirate.send(association_name).create!(:name => "#{association_name}_1")
       children = @pirate.send(association_name)
@@ -705,7 +720,6 @@ class TestDestroyAsPartOfAutosaveAssociation < ActiveRecord::TestCase
       end
 
       assert_raise(RuntimeError) { assert !@pirate.save }
-      assert before.first.frozen? # the first child was indeed destroyed
       assert_equal before, @pirate.reload.send(association_name)
     end
 
@@ -758,7 +772,7 @@ class TestAutosaveAssociationOnAHasOneAssociation < ActiveRecord::TestCase
     @ship.destroy
     @pirate.reload.catchphrase = "Arr"
     @pirate.save
-    assert 'Arr', @pirate.reload.catchphrase
+    assert_equal 'Arr', @pirate.reload.catchphrase
   end
 
   def test_should_automatically_save_the_associated_model
@@ -775,23 +789,36 @@ class TestAutosaveAssociationOnAHasOneAssociation < ActiveRecord::TestCase
 
   def test_should_automatically_validate_the_associated_model
     @pirate.ship.name = ''
-    assert !@pirate.valid?
-    assert_equal "can't be blank", @pirate.errors.on(:"ship.name")
+    assert @pirate.invalid?
+    assert @pirate.errors[:"ship.name"].any?
   end
 
   def test_should_merge_errors_on_the_associated_models_onto_the_parent_even_if_it_is_not_valid
     @pirate.ship.name   = nil
     @pirate.catchphrase = nil
-    assert !@pirate.valid?
-    assert @pirate.errors.full_messages.include?("Name can't be blank")
-    assert @pirate.errors.full_messages.include?("Catchphrase can't be blank")
+    assert @pirate.invalid?
+    assert @pirate.errors[:"ship.name"].any?
+    assert @pirate.errors[:catchphrase].any?
+  end
+
+  def test_should_not_ignore_different_error_messages_on_the_same_attribute
+    Ship.validates_format_of :name, :with => /\w/
+    @pirate.ship.name   = ""
+    @pirate.catchphrase = nil
+    assert @pirate.invalid?
+    assert_equal ["can't be blank", "is invalid"], @pirate.errors[:"ship.name"]
   end
 
   def test_should_still_allow_to_bypass_validations_on_the_associated_model
     @pirate.catchphrase = ''
     @pirate.ship.name = ''
-    @pirate.save(false)
-    assert_equal ['', ''], [@pirate.reload.catchphrase, @pirate.ship.name]
+    @pirate.save(:validate => false)
+    # Oracle saves empty string as NULL
+    if current_adapter?(:OracleAdapter)
+      assert_equal [nil, nil], [@pirate.reload.catchphrase, @pirate.ship.name]
+    else
+      assert_equal ['', ''], [@pirate.reload.catchphrase, @pirate.ship.name]
+    end
   end
 
   def test_should_allow_to_bypass_validations_on_associated_models_at_any_depth
@@ -800,10 +827,15 @@ class TestAutosaveAssociationOnAHasOneAssociation < ActiveRecord::TestCase
     @pirate.catchphrase = ''
     @pirate.ship.name = ''
     @pirate.ship.parts.each { |part| part.name = '' }
-    @pirate.save(false)
+    @pirate.save(:validate => false)
 
     values = [@pirate.reload.catchphrase, @pirate.ship.name, *@pirate.ship.parts.map(&:name)]
-    assert_equal ['', '', '', ''], values
+    # Oracle saves empty string as NULL
+    if current_adapter?(:OracleAdapter)
+      assert_equal [nil, nil, nil, nil], values
+    else
+      assert_equal ['', '', '', ''], values
+    end
   end
 
   def test_should_still_raise_an_ActiveRecordRecord_Invalid_exception_if_we_want_that
@@ -860,7 +892,7 @@ class TestAutosaveAssociationOnABelongsToAssociation < ActiveRecord::TestCase
     @pirate.destroy
     @ship.reload.name = "The Vile Insanity"
     @ship.save
-    assert 'The Vile Insanity', @ship.reload.name
+    assert_equal 'The Vile Insanity', @ship.reload.name
   end
 
   def test_should_automatically_save_the_associated_model
@@ -877,23 +909,28 @@ class TestAutosaveAssociationOnABelongsToAssociation < ActiveRecord::TestCase
 
   def test_should_automatically_validate_the_associated_model
     @ship.pirate.catchphrase = ''
-    assert !@ship.valid?
-    assert_equal "can't be blank", @ship.errors.on(:"pirate.catchphrase")
+    assert @ship.invalid?
+    assert @ship.errors[:"pirate.catchphrase"].any?
   end
 
   def test_should_merge_errors_on_the_associated_model_onto_the_parent_even_if_it_is_not_valid
     @ship.name = nil
     @ship.pirate.catchphrase = nil
-    assert !@ship.valid?
-    assert @ship.errors.full_messages.include?("Name can't be blank")
-    assert @ship.errors.full_messages.include?("Catchphrase can't be blank")
+    assert @ship.invalid?
+    assert @ship.errors[:name].any?
+    assert @ship.errors[:"pirate.catchphrase"].any?
   end
 
   def test_should_still_allow_to_bypass_validations_on_the_associated_model
     @ship.pirate.catchphrase = ''
     @ship.name = ''
-    @ship.save(false)
-    assert_equal ['', ''], [@ship.reload.name, @ship.pirate.catchphrase]
+    @ship.save(:validate => false)
+    # Oracle saves empty string as NULL
+    if current_adapter?(:OracleAdapter)
+      assert_equal [nil, nil], [@ship.reload.name, @ship.pirate.catchphrase]
+    else
+      assert_equal ['', ''], [@ship.reload.name, @ship.pirate.catchphrase]
+    end
   end
 
   def test_should_still_raise_an_ActiveRecordRecord_Invalid_exception_if_we_want_that
@@ -959,16 +996,31 @@ module AutosaveAssociationOnACollectionAssociationTests
     @pirate.send(@association_name).each { |child| child.name = '' }
 
     assert !@pirate.valid?
-    assert @pirate.errors.full_messages.include?("Name can't be blank")
-    assert @pirate.errors.on(@association_name).blank?
+    assert_equal ["can't be blank"], @pirate.errors["#{@association_name}.name"]
+    assert @pirate.errors[@association_name].empty?
   end
 
   def test_should_not_use_default_invalid_error_on_associated_models
     @pirate.send(@association_name).build(:name => '')
 
     assert !@pirate.valid?
-    assert_equal "can't be blank", @pirate.errors.on("#{@association_name}.name")
-    assert @pirate.errors.on(@association_name).blank?
+    assert_equal ["can't be blank"], @pirate.errors["#{@association_name}.name"]
+    assert @pirate.errors[@association_name].empty?
+  end
+
+  def test_should_default_invalid_error_from_i18n
+    I18n.backend.store_translations(:en, :activerecord => {:errors => { :models =>
+      { @association_name.to_s.singularize.to_sym => { :blank => "cannot be blank" } }
+    }})
+
+    @pirate.send(@association_name).build(:name => '')
+
+    assert !@pirate.valid?
+    assert_equal ["cannot be blank"], @pirate.errors["#{@association_name}.name"]
+    assert_equal ["#{@association_name.to_s.titleize} name cannot be blank"], @pirate.errors.full_messages
+    assert @pirate.errors[@association_name].empty?
+  ensure
+    I18n.backend = I18n::Backend::Simple.new
   end
 
   def test_should_merge_errors_on_the_associated_models_onto_the_parent_even_if_it_is_not_valid
@@ -976,33 +1028,42 @@ module AutosaveAssociationOnACollectionAssociationTests
     @pirate.catchphrase = nil
 
     assert !@pirate.valid?
-    assert_equal "can't be blank", @pirate.errors.on("#{@association_name}.name")
-    assert !@pirate.errors.on(:catchphrase).blank?
+    assert_equal ["can't be blank"], @pirate.errors["#{@association_name}.name"]
+    assert @pirate.errors[:catchphrase].any?
   end
 
   def test_should_allow_to_bypass_validations_on_the_associated_models_on_update
     @pirate.catchphrase = ''
     @pirate.send(@association_name).each { |child| child.name = '' }
 
-    assert @pirate.save(false)
-    assert_equal ['', '', ''], [
-      @pirate.reload.catchphrase,
-      @pirate.send(@association_name).first.name,
-      @pirate.send(@association_name).last.name
-    ]
+    assert @pirate.save(:validate => false)
+    # Oracle saves empty string as NULL
+    if current_adapter?(:OracleAdapter)
+      assert_equal [nil, nil, nil], [
+        @pirate.reload.catchphrase,
+        @pirate.send(@association_name).first.name,
+        @pirate.send(@association_name).last.name
+      ]
+    else
+      assert_equal ['', '', ''], [
+        @pirate.reload.catchphrase,
+        @pirate.send(@association_name).first.name,
+        @pirate.send(@association_name).last.name
+      ]
+    end
   end
 
   def test_should_validation_the_associated_models_on_create
     assert_no_difference("#{ @association_name == :birds ? 'Bird' : 'Parrot' }.count") do
       2.times { @pirate.send(@association_name).build }
-      @pirate.save(true)
+      @pirate.save
     end
   end
 
   def test_should_allow_to_bypass_validations_on_the_associated_models_on_create
-    assert_difference("#{ @association_name == :birds ? 'Bird' : 'Parrot' }.count", +2) do
+    assert_difference("#{ @association_name == :birds ? 'Bird' : 'Parrot' }.count", 2) do
       2.times { @pirate.send(@association_name).build }
-      @pirate.save(false)
+      @pirate.save(:validate => false)
     end
   end
 
@@ -1095,7 +1156,7 @@ class TestAutosaveAssociationOnAHasAndBelongsToManyAssociation < ActiveRecord::T
   include AutosaveAssociationOnACollectionAssociationTests
 end
 
-class TestAutosaveAssociationValidationsOnAHasManyAssocication < ActiveRecord::TestCase
+class TestAutosaveAssociationValidationsOnAHasManyAssociation < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
 
   def setup
@@ -1111,7 +1172,7 @@ class TestAutosaveAssociationValidationsOnAHasManyAssocication < ActiveRecord::T
   end
 end
 
-class TestAutosaveAssociationValidationsOnAHasOneAssocication < ActiveRecord::TestCase
+class TestAutosaveAssociationValidationsOnAHasOneAssociation < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
 
   def setup
@@ -1132,7 +1193,7 @@ class TestAutosaveAssociationValidationsOnAHasOneAssocication < ActiveRecord::Te
   end
 end
 
-class TestAutosaveAssociationValidationsOnABelongsToAssocication < ActiveRecord::TestCase
+class TestAutosaveAssociationValidationsOnABelongsToAssociation < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
 
   def setup
@@ -1152,7 +1213,7 @@ class TestAutosaveAssociationValidationsOnABelongsToAssocication < ActiveRecord:
   end
 end
 
-class TestAutosaveAssociationValidationsOnAHABTMAssocication < ActiveRecord::TestCase
+class TestAutosaveAssociationValidationsOnAHABTMAssociation < ActiveRecord::TestCase
   self.use_transactional_fixtures = false
 
   def setup
@@ -1182,11 +1243,11 @@ class TestAutosaveAssociationValidationMethodsGeneration < ActiveRecord::TestCas
   end
 
   test "should generate validation methods for has_many associations" do
-    assert @pirate.respond_to?(:validate_associated_records_for_birds)
+    assert_respond_to @pirate, :validate_associated_records_for_birds
   end
 
   test "should generate validation methods for has_one associations with :validate => true" do
-    assert @pirate.respond_to?(:validate_associated_records_for_ship)
+    assert_respond_to @pirate, :validate_associated_records_for_ship
   end
 
   test "should not generate validation methods for has_one associations without :validate => true" do
@@ -1194,7 +1255,7 @@ class TestAutosaveAssociationValidationMethodsGeneration < ActiveRecord::TestCas
   end
 
   test "should generate validation methods for belongs_to associations with :validate => true" do
-    assert @pirate.respond_to?(:validate_associated_records_for_parrot)
+    assert_respond_to @pirate, :validate_associated_records_for_parrot
   end
 
   test "should not generate validation methods for belongs_to associations without :validate => true" do
@@ -1202,7 +1263,7 @@ class TestAutosaveAssociationValidationMethodsGeneration < ActiveRecord::TestCas
   end
 
   test "should generate validation methods for HABTM associations with :validate => true" do
-    assert @pirate.respond_to?(:validate_associated_records_for_parrots)
+    assert_respond_to @pirate, :validate_associated_records_for_parrots
   end
 
   test "should not generate validation methods for HABTM associations without :validate => true" do

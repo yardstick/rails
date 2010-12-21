@@ -8,7 +8,7 @@ require 'models/comment'
 
 class JsonSerializationTest < ActiveRecord::TestCase
   class NamespacedContact < Contact
-    column :name,        :string
+    column :name, :string
   end
 
   def setup
@@ -23,14 +23,12 @@ class JsonSerializationTest < ActiveRecord::TestCase
   end
 
   def test_should_demodulize_root_in_json
-    NamespacedContact.include_root_in_json = true
     @contact = NamespacedContact.new :name => 'whatever'
     json = @contact.to_json
     assert_match %r{^\{"namespaced_contact":\{}, json
   end
 
   def test_should_include_root_in_json
-    Contact.include_root_in_json = true
     json = @contact.to_json
 
     assert_match %r{^\{"contact":\{}, json
@@ -39,22 +37,6 @@ class JsonSerializationTest < ActiveRecord::TestCase
     assert json.include?(%("created_at":#{ActiveSupport::JSON.encode(Time.utc(2006, 8, 1))}))
     assert_match %r{"awesome":true}, json
     assert_match %r{"preferences":\{"shows":"anime"\}}, json
-  ensure
-    Contact.include_root_in_json = false
-  end
-
-  def test_should_include_root_in_json
-    Contact.include_root_in_json = true
-    json = @contact.to_json(:root => 'json_contact')
-
-    assert_match %r{^\{"json_contact":\{}, json
-    assert_match %r{"name":"Konata Izumi"}, json
-    assert_match %r{"age":16}, json
-    assert json.include?(%("created_at":#{ActiveSupport::JSON.encode(Time.utc(2006, 8, 1))}))
-    assert_match %r{"awesome":true}, json
-    assert_match %r{"preferences":\{"shows":"anime"\}}, json
-  ensure
-    Contact.include_root_in_json = false
   end
 
   def test_should_encode_all_encodable_attributes
@@ -99,6 +81,13 @@ class JsonSerializationTest < ActiveRecord::TestCase
     methods_json = @contact.to_json(:only => :name, :methods => [:label, :favorite_quote])
     assert_match %r{"label":"Has cheezburger"}, methods_json
     assert_match %r{"favorite_quote":"Constraints are liberating"}, methods_json
+  end
+
+  def test_serializable_hash_should_not_modify_options_in_argument
+    options = { :only => :name }
+    @contact.serializable_hash(options)
+
+    assert_nil options[:except]
   end
 end
 
@@ -182,15 +171,19 @@ class DatabaseConnectedJsonEncodingTest < ActiveRecord::TestCase
   end
 
   def test_should_allow_only_option_for_list_of_authors
+    ActiveRecord::Base.include_root_in_json = false
     authors = [@david, @mary]
-
     assert_equal %([{"name":"David"},{"name":"Mary"}]), ActiveSupport::JSON.encode(authors, :only => :name)
+  ensure
+    ActiveRecord::Base.include_root_in_json = true
   end
 
   def test_should_allow_except_option_for_list_of_authors
+    ActiveRecord::Base.include_root_in_json = false
     authors = [@david, @mary]
-
     assert_equal %([{"id":1},{"id":2}]), ActiveSupport::JSON.encode(authors, :except => [:name, :author_address_id, :author_address_extra_id])
+  ensure
+    ActiveRecord::Base.include_root_in_json = true
   end
 
   def test_should_allow_includes_for_list_of_authors
@@ -213,7 +206,13 @@ class DatabaseConnectedJsonEncodingTest < ActiveRecord::TestCase
       1 => @david,
       2 => @mary
     }
+    assert_equal %({"1":{"author":{"name":"David"}}}), ActiveSupport::JSON.encode(authors_hash, :only => [1, :name])
+  end
 
-    assert_equal %({"1":{"name":"David"}}), ActiveSupport::JSON.encode(authors_hash, :only => [1, :name])
+  def test_should_be_able_to_encode_relation
+    authors_relation = Author.where(:id => [@david.id, @mary.id])
+
+    json = ActiveSupport::JSON.encode authors_relation, :only => :name
+    assert_equal '[{"author":{"name":"David"}},{"author":{"name":"Mary"}}]', json
   end
 end

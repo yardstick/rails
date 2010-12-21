@@ -1,4 +1,6 @@
 require 'abstract_unit'
+require 'action_controller/vendor/html-scanner'
+require 'controller/fake_controllers'
 
 # a controller class to facilitate the tests
 class ActionPackAssertionsController < ActionController::Base
@@ -11,7 +13,19 @@ class ActionPackAssertionsController < ActionController::Base
 
   # a standard template
   def hello_xml_world() render :template => "test/hello_xml_world"; end
-  
+
+  # a standard template rendering PDF
+  def hello_xml_world_pdf
+    self.content_type = "application/pdf"
+    render :template => "test/hello_xml_world"
+  end
+
+  # a standard template rendering PDF
+  def hello_xml_world_pdf_header
+    response.headers["Content-Type"] = "application/pdf; charset=utf-8"
+    render :template => "test/hello_xml_world"
+  end
+
   # a standard partial
   def partial() render :partial => 'test/partial'; end
 
@@ -167,18 +181,10 @@ module Admin
   end
 end
 
+# require "action_dispatch/test_process"
+
 # a test case to exercise the new capabilities TestRequest & TestResponse
 class ActionPackAssertionsControllerTest < ActionController::TestCase
-  # let's get this party started
-  def setup
-    ActionController::Routing::Routes.reload
-    ActionController::Routing.use_controllers!(%w(action_pack_assertions admin/inner_module user content admin/user))
-  end
-
-  def teardown
-    ActionController::Routing::Routes.reload
-  end
-
   # -- assertion-based testing ------------------------------------------------
 
   def test_assert_tag_and_url_for
@@ -217,8 +223,8 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   def test_assert_redirect_to_named_route
     with_routing do |set|
       set.draw do |map|
-        map.route_one 'route_one', :controller => 'action_pack_assertions', :action => 'nothing'
-        map.connect   ':controller/:action/:id'
+        match 'route_one', :to => 'action_pack_assertions#nothing', :as => :route_one
+        match ':controller/:action'
       end
       set.install_helpers
 
@@ -228,12 +234,20 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
     end
   end
 
+  def test_string_constraint
+    with_routing do |set|
+      set.draw do |map|
+        match "photos", :to => 'action_pack_assertions#nothing', :constraints => {:subdomain => "admin"}
+      end
+    end
+  end
+
   def test_assert_redirect_to_named_route_failure
     with_routing do |set|
       set.draw do |map|
-        map.route_one 'route_one', :controller => 'action_pack_assertions', :action => 'nothing', :id => 'one'
-        map.route_two 'route_two', :controller => 'action_pack_assertions', :action => 'nothing', :id => 'two'
-        map.connect   ':controller/:action/:id'
+        match 'route_one', :to => 'action_pack_assertions#nothing', :as => :route_one
+        match 'route_two', :to => 'action_pack_assertions#nothing', :id => 'two', :as => :route_two
+        match ':controller/:action'
       end
       process :redirect_to_named_route
       assert_raise(ActiveSupport::TestCase::Assertion) do
@@ -249,12 +263,14 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   end
 
   def test_assert_redirect_to_nested_named_route
+    @controller = Admin::InnerModuleController.new
+
     with_routing do |set|
       set.draw do |map|
-        map.admin_inner_module 'admin/inner_module', :controller => 'admin/inner_module', :action => 'index'
-        map.connect            ':controller/:action/:id'
+        match 'admin/inner_module', :to => 'admin/inner_module#index', :as => :admin_inner_module
+        # match ':controller/:action'
+        map.connect ':controller/:action/:id'
       end
-      @controller = Admin::InnerModuleController.new
       process :redirect_to_index
       # redirection is <{"action"=>"index", "controller"=>"admin/admin/inner_module"}>
       assert_redirected_to admin_inner_module_path
@@ -262,12 +278,14 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   end
 
   def test_assert_redirected_to_top_level_named_route_from_nested_controller
+    @controller = Admin::InnerModuleController.new
+
     with_routing do |set|
       set.draw do |map|
-        map.top_level '/action_pack_assertions/:id', :controller => 'action_pack_assertions', :action => 'index'
-        map.connect   ':controller/:action/:id'
+        match '/action_pack_assertions/:id', :to => 'action_pack_assertions#index', :as => :top_level
+        # match ':controller/:action'
+        map.connect ':controller/:action/:id'
       end
-      @controller = Admin::InnerModuleController.new
       process :redirect_to_top_level_named_route
       # assert_redirected_to "http://test.host/action_pack_assertions/foo" would pass because of exact match early return
       assert_redirected_to "/action_pack_assertions/foo"
@@ -275,13 +293,15 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   end
 
   def test_assert_redirected_to_top_level_named_route_with_same_controller_name_in_both_namespaces
+    @controller = Admin::InnerModuleController.new
+
     with_routing do |set|
       set.draw do |map|
         # this controller exists in the admin namespace as well which is the only difference from previous test
-        map.top_level '/user/:id', :controller => 'user', :action => 'index'
-        map.connect   ':controller/:action/:id'
+        match '/user/:id', :to => 'user#index', :as => :top_level
+        # match ':controller/:action'
+        map.connect ':controller/:action/:id'
       end
-      @controller = Admin::InnerModuleController.new
       process :redirect_to_top_level_named_route
       # assert_redirected_to top_level_url('foo') would pass because of exact match early return
       assert_redirected_to top_level_path('foo')
@@ -293,71 +313,53 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   # make sure that the template objects exist
   def test_template_objects_alive
     process :assign_this
-    assert !@response.has_template_object?('hi')
-    assert @response.has_template_object?('howdy')
+    assert !@controller.instance_variable_get(:"@hi")
+    assert @controller.instance_variable_get(:"@howdy")
   end
 
   # make sure we don't have template objects when we shouldn't
   def test_template_object_missing
     process :nothing
-    assert_nil @response.template_objects['howdy']
+    assert_nil @controller.instance_variable_get(:@howdy)
   end
 
   # check the empty flashing
   def test_flash_me_naked
     process :flash_me_naked
-    assert !@response.has_flash?
-    assert !@response.has_flash_with_contents?
+    assert_deprecated do
+      assert !@response.has_flash?
+      assert !@response.has_flash_with_contents?
+    end
   end
 
   # check if we have flash objects
   def test_flash_haves
     process :flash_me
-    assert @response.has_flash?
-    assert @response.has_flash_with_contents?
-    assert @response.has_flash_object?('hello')
+    assert_deprecated do
+      assert @response.has_flash?
+      assert @response.has_flash_with_contents?
+      assert @response.has_flash_object?('hello')
+    end
   end
 
   # ensure we don't have flash objects
   def test_flash_have_nots
     process :nothing
-    assert !@response.has_flash?
-    assert !@response.has_flash_with_contents?
-    assert_nil @response.flash['hello']
+    assert_deprecated do
+      assert !@response.has_flash?
+      assert !@response.has_flash_with_contents?
+      assert_nil @response.flash['hello']
+    end
   end
+
 
   # check if we were rendered by a file-based template?
   def test_rendered_action
     process :nothing
-    assert_nil @response.rendered[:template]
+    assert_template nil
 
     process :hello_world
-    assert @response.rendered[:template]
-    assert 'hello_world', @response.rendered[:template].to_s
-  end
-  
-  def test_assert_template_with_partial
-    get :partial
-    assert_template :partial => '_partial'
-  end
-  
-  def test_assert_template_with_nil
-    get :nothing
-    assert_template nil
-  end
-  
-  def test_assert_template_with_string
-    get :hello_world
-    assert_template 'hello_world'    
-  end
-  
-  def test_assert_template_with_symbol
-    get :hello_world
-    assert_template :hello_world
-  end
-  
-  def test_assert_template_with_bad_argument
-    assert_raise(ArgumentError) { assert_template 1 }    
+    assert_template 'hello_world'
   end
 
   # check the redirection location
@@ -373,7 +375,6 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
     process :nothing
     assert_nil @response.redirect_url
   end
-
 
   # check server errors
   def test_server_error_response_code
@@ -403,10 +404,12 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   def test_redirect_url_match
     process :redirect_external
     assert @response.redirect?
-    assert @response.redirect_url_match?("rubyonrails")
-    assert @response.redirect_url_match?(/rubyonrails/)
-    assert !@response.redirect_url_match?("phpoffrails")
-    assert !@response.redirect_url_match?(/perloffrails/)
+    assert_deprecated do
+      assert @response.redirect_url_match?("rubyonrails")
+      assert @response.redirect_url_match?(/rubyonrails/)
+      assert !@response.redirect_url_match?("phpoffrails")
+      assert !@response.redirect_url_match?(/perloffrails/)
+    end
   end
 
   # check for a redirection
@@ -438,7 +441,6 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
     assert_equal "Mr. David", @response.body
   end
 
-
   def test_assert_redirection_fails_with_incorrect_controller
     process :redirect_to_controller
     assert_raise(ActiveSupport::TestCase::Assertion) do
@@ -456,9 +458,9 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
     assert_redirected_to '/some/path'
   end
 
-  def test_redirected_to_url_no_leadling_slash
+  def test_redirected_to_url_no_leading_slash_fails
     process :redirect_to_path
-    assert_deprecated /leading/ do
+    assert_raise ActiveSupport::TestCase::Assertion do
       assert_redirected_to 'some/path'
     end
   end
@@ -488,27 +490,12 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
     assert_redirected_to :controller => 'admin/user'
   end
 
-  def test_assert_valid
-    get :get_valid_record
-    assert_deprecated { assert_valid assigns('record') }
-  end
-
-  def test_assert_valid_failing
-    get :get_invalid_record
-
-    begin
-      assert_deprecated { assert_valid assigns('record') }
-      assert false
-    rescue ActiveSupport::TestCase::Assertion => e
-    end
-  end
-
   def test_assert_response_uses_exception_message
     @controller = AssertResponseWithUnexpectedErrorController.new
     get :index
     assert_response :success
     flunk 'Expected non-success response'
-  rescue ActiveSupport::TestCase::Assertion => e
+  rescue RuntimeError => e
     assert e.message.include?('FAIL')
   end
 
@@ -524,6 +511,60 @@ class ActionPackAssertionsControllerTest < ActionController::TestCase
   end
 end
 
+class AssertTemplateTest < ActionController::TestCase
+  tests ActionPackAssertionsController
+
+  def test_with_partial
+    get :partial
+    assert_template :partial => '_partial'
+  end
+
+  def test_with_nil_passes_when_no_template_rendered
+    get :nothing
+    assert_template nil
+  end
+
+  def test_with_nil_fails_when_template_rendered
+    get :hello_world
+    assert_raise(ActiveSupport::TestCase::Assertion) do
+      assert_template nil
+    end
+  end
+
+  def test_passes_with_correct_string
+    get :hello_world
+    assert_template 'hello_world'
+    assert_template 'test/hello_world'
+  end
+
+  def test_passes_with_correct_symbol
+    get :hello_world
+    assert_template :hello_world
+  end
+
+  def test_fails_with_incorrect_string
+    get :hello_world
+    assert_raise(ActiveSupport::TestCase::Assertion) do
+      assert_template 'hello_planet'
+    end
+  end
+
+  def test_fails_with_incorrect_symbol
+    get :hello_world
+    assert_raise(ActiveSupport::TestCase::Assertion) do
+      assert_template :hello_planet
+    end
+  end
+
+  def test_assert_template_reset_between_requests
+    get :hello_world
+    assert_template 'test/hello_world'
+
+    get :nothing
+    assert_template nil
+  end
+end
+
 class ActionPackHeaderTest < ActionController::TestCase
   tests ActionPackAssertionsController
 
@@ -533,8 +574,12 @@ class ActionPackHeaderTest < ActionController::TestCase
   end
 
   def test_rendering_xml_respects_content_type
-    @response.headers['type'] = 'application/pdf'
-    process :hello_xml_world
+    process :hello_xml_world_pdf
+    assert_equal('application/pdf; charset=utf-8', @response.headers['Content-Type'])
+  end
+
+  def test_rendering_xml_respects_content_type_when_set_in_the_header
+    process :hello_xml_world_pdf_header
     assert_equal('application/pdf; charset=utf-8', @response.headers['Content-Type'])
   end
 

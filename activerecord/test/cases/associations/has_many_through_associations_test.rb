@@ -14,62 +14,70 @@ require 'models/toy'
 require 'models/contract'
 require 'models/company'
 require 'models/developer'
+require 'models/subscriber'
+require 'models/book'
+require 'models/subscription'
 
 class HasManyThroughAssociationsTest < ActiveRecord::TestCase
-  fixtures :posts, :readers, :people, :comments, :authors, :owners, :pets, :toys,
-           :companies
+  fixtures :posts, :readers, :people, :comments, :authors,
+           :owners, :pets, :toys, :jobs, :references, :companies,
+           :subscribers, :books, :subscriptions, :developers
+
+  # Dummies to force column loads so query counts are clean.
+  def setup
+    Person.create :first_name => 'gummy'
+    Reader.create :person_id => 0, :post_id => 0
+  end
 
   def test_associate_existing
-    assert_queries(2) { posts(:thinking);people(:david) }
-
-    posts(:thinking).people
+    assert_queries(2) { posts(:thinking); people(:david) }
 
     assert_queries(1) do
       posts(:thinking).people << people(:david)
     end
-    
+
     assert_queries(1) do
       assert posts(:thinking).people.include?(people(:david))
     end
-    
+
     assert posts(:thinking).reload.people(true).include?(people(:david))
   end
 
   def test_associating_new
     assert_queries(1) { posts(:thinking) }
     new_person = nil # so block binding catches it
-    
+
     assert_queries(0) do
       new_person = Person.new :first_name => 'bob'
     end
-    
+
     # Associating new records always saves them
     # Thus, 1 query for the new person record, 1 query for the new join table record
     assert_queries(2) do
       posts(:thinking).people << new_person
     end
-    
+
     assert_queries(1) do
       assert posts(:thinking).people.include?(new_person)
     end
-    
+
     assert posts(:thinking).reload.people(true).include?(new_person)
   end
 
   def test_associate_new_by_building
     assert_queries(1) { posts(:thinking) }
-    
+
     assert_queries(0) do
-      posts(:thinking).people.build(:first_name=>"Bob")
-      posts(:thinking).people.new(:first_name=>"Ted")
+      posts(:thinking).people.build(:first_name => "Bob")
+      posts(:thinking).people.new(:first_name => "Ted")
     end
-    
+
     # Should only need to load the association once
     assert_queries(1) do
       assert posts(:thinking).people.collect(&:first_name).include?("Bob")
       assert posts(:thinking).people.collect(&:first_name).include?("Ted")
     end
-    
+
     # 2 queries for each new record (1 to save the record itself, 1 for the join model)
     #    * 2 new records = 4
     # + 1 query to save the actual post = 5
@@ -77,27 +85,27 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
       posts(:thinking).body += '-changed'
       posts(:thinking).save
     end
-    
+
     assert posts(:thinking).reload.people(true).collect(&:first_name).include?("Bob")
     assert posts(:thinking).reload.people(true).collect(&:first_name).include?("Ted")
   end
 
   def test_delete_association
     assert_queries(2){posts(:welcome);people(:michael); }
-    
+
     assert_queries(1) do
       posts(:welcome).people.delete(people(:michael))
     end
-    
+
     assert_queries(1) do
       assert posts(:welcome).people.empty?
     end
-    
+
     assert posts(:welcome).reload.people(true).empty?
   end
 
   def test_destroy_association
-    assert_difference "Person.count", -1 do
+    assert_difference ["Person.count", "Reader.count"], -1 do
       posts(:welcome).people.destroy(people(:michael))
     end
 
@@ -106,7 +114,7 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_destroy_all
-    assert_difference "Person.count", -1 do
+    assert_difference ["Person.count", "Reader.count"], -1 do
       posts(:welcome).people.destroy_all
     end
 
@@ -114,20 +122,26 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     assert posts(:welcome).people(true).empty?
   end
 
+  def test_should_raise_exception_for_destroying_mismatching_records
+    assert_no_difference ["Person.count", "Reader.count"] do
+      assert_raise(ActiveRecord::AssociationTypeMismatch) { posts(:welcome).people.destroy(posts(:thinking)) }
+    end
+  end
+
   def test_replace_association
     assert_queries(4){posts(:welcome);people(:david);people(:michael); posts(:welcome).people(true)}
-    
+
     # 1 query to delete the existing reader (michael)
     # 1 query to associate the new reader (david)
     assert_queries(2) do
       posts(:welcome).people = [people(:david)]
     end
-    
+
     assert_queries(0){
       assert posts(:welcome).people.include?(people(:david))
       assert !posts(:welcome).people.include?(people(:michael))
     }
-    
+
     assert posts(:welcome).reload.people(true).include?(people(:david))
     assert !posts(:welcome).reload.people(true).include?(people(:michael))
   end
@@ -135,39 +149,39 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
   def test_replace_order_is_preserved
     posts(:welcome).people.clear
     posts(:welcome).people = [people(:david), people(:michael)]
-    assert_equal [people(:david).id, people(:michael).id], posts(:welcome).readers.all(:order => 'id').map(&:person_id)
+    assert_equal [people(:david).id, people(:michael).id], posts(:welcome).readers.order('id').map(&:person_id)
 
     # Test the inverse order in case the first success was a coincidence
     posts(:welcome).people.clear
     posts(:welcome).people = [people(:michael), people(:david)]
-    assert_equal [people(:michael).id, people(:david).id], posts(:welcome).readers.all(:order => 'id').map(&:person_id)
+    assert_equal [people(:michael).id, people(:david).id], posts(:welcome).readers.order('id').map(&:person_id)
   end
 
   def test_replace_by_id_order_is_preserved
     posts(:welcome).people.clear
     posts(:welcome).person_ids = [people(:david).id, people(:michael).id]
-    assert_equal [people(:david).id, people(:michael).id], posts(:welcome).readers.all(:order => 'id').map(&:person_id)
+    assert_equal [people(:david).id, people(:michael).id], posts(:welcome).readers.order('id').map(&:person_id)
 
     # Test the inverse order in case the first success was a coincidence
     posts(:welcome).people.clear
     posts(:welcome).person_ids = [people(:michael).id, people(:david).id]
-    assert_equal [people(:michael).id, people(:david).id], posts(:welcome).readers.all(:order => 'id').map(&:person_id)
+    assert_equal [people(:michael).id, people(:david).id], posts(:welcome).readers.order('id').map(&:person_id)
   end
 
   def test_associate_with_create
     assert_queries(1) { posts(:thinking) }
-    
+
     # 1 query for the new record, 1 for the join table record
     # No need to update the actual collection yet!
     assert_queries(2) do
       posts(:thinking).people.create(:first_name=>"Jeb")
     end
-    
+
     # *Now* we actually need the collection so it's loaded
     assert_queries(1) do
       assert posts(:thinking).people.collect(&:first_name).include?("Jeb")
     end
-    
+
     assert posts(:thinking).reload.people(true).collect(&:first_name).include?("Jeb")
   end
 
@@ -177,47 +191,74 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     assert_equal peeps + 1, posts(:thinking).people.count
   end
 
+  def test_associate_with_create_with_through_having_conditions
+    impatient_people = posts(:thinking).impatient_people.count
+    posts(:thinking).impatient_people.create!(:first_name => 'foo')
+    assert_equal impatient_people + 1, posts(:thinking).impatient_people.count
+  end
+
   def test_associate_with_create_exclamation_and_no_options
     peeps = posts(:thinking).people.count
     posts(:thinking).people.create!(:first_name => 'foo')
     assert_equal peeps + 1, posts(:thinking).people.count
   end
 
+  def test_create_on_new_record
+    p = Post.new
+
+    assert_raises(ActiveRecord::RecordNotSaved) { p.people.create(:first_name => "mew") }
+    assert_raises(ActiveRecord::RecordNotSaved) { p.people.create!(:first_name => "snow") }
+  end
+
   def test_associate_with_create_and_invalid_options
-    peeps = companies(:first_firm).developers.count
-    assert_nothing_raised { companies(:first_firm).developers.create(:name => '0') }
-    assert_equal peeps, companies(:first_firm).developers.count
+    firm = companies(:first_firm)
+    assert_no_difference('firm.developers.count') { assert_nothing_raised { firm.developers.create(:name => '0') } }
   end
 
   def test_associate_with_create_and_valid_options
-    peeps = companies(:first_firm).developers.count
-    assert_nothing_raised { companies(:first_firm).developers.create(:name => 'developer') }
-    assert_equal peeps + 1, companies(:first_firm).developers.count
+    firm = companies(:first_firm)
+    assert_difference('firm.developers.count', 1) { firm.developers.create(:name => 'developer') }
   end
 
   def test_associate_with_create_bang_and_invalid_options
-    peeps = companies(:first_firm).developers.count
-    assert_raises(ActiveRecord::RecordInvalid) { companies(:first_firm).developers.create!(:name => '0') }
-    assert_equal peeps, companies(:first_firm).developers.count
+    firm = companies(:first_firm)
+    assert_no_difference('firm.developers.count') { assert_raises(ActiveRecord::RecordInvalid) { firm.developers.create!(:name => '0') } }
   end
 
   def test_associate_with_create_bang_and_valid_options
-    peeps = companies(:first_firm).developers.count
-    assert_nothing_raised { companies(:first_firm).developers.create!(:name => 'developer') }
-    assert_equal peeps + 1, companies(:first_firm).developers.count
+    firm = companies(:first_firm)
+    assert_difference('firm.developers.count', 1) { firm.developers.create!(:name => 'developer') }
+  end
+
+  def test_push_with_invalid_record
+    firm = companies(:first_firm)
+    assert_raises(ActiveRecord::RecordInvalid) { firm.developers << Developer.new(:name => '0') }
+  end
+
+  def test_push_with_invalid_join_record
+    repair_validations(Contract) do
+      Contract.validate {|r| r.errors[:base] << 'Invalid Contract' }
+
+      firm = companies(:first_firm)
+      lifo = Developer.new(:name => 'lifo')
+      assert_raises(ActiveRecord::RecordInvalid) { firm.developers << lifo }
+
+      lifo = Developer.create!(:name => 'lifo')
+      assert_raises(ActiveRecord::RecordInvalid) { firm.developers << lifo }
+    end
   end
 
   def test_clear_associations
     assert_queries(2) { posts(:welcome);posts(:welcome).people(true) }
-    
+
     assert_queries(1) do
       posts(:welcome).people.clear
     end
-    
+
     assert_queries(0) do
       assert posts(:welcome).people.empty?
     end
-    
+
     assert posts(:welcome).reload.people(true).empty?
   end
 
@@ -255,7 +296,7 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     ], log.last(2)
 
     post.people_with_callbacks = [people(:michael),people(:david), Person.new(:first_name => "Julian"), Person.create!(:first_name => "Roger")]
-    assert_equal (%w(Ted Bob Sam Lary) * 2).sort, log[-12..-5].collect(&:last).sort
+    assert_equal((%w(Ted Bob Sam Lary) * 2).sort, log[-12..-5].collect(&:last).sort)
     assert_equal [
       [:added, :before, "Julian"],
       [:added, :after, "Julian"],
@@ -264,7 +305,7 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     ], log.last(4)
 
     post.people_with_callbacks.clear
-    assert_equal (%w(Michael David Julian Roger) * 2).sort, log.last(8).collect(&:last).sort
+    assert_equal((%w(Michael David Julian Roger) * 2).sort, log.last(8).collect(&:last).sort)
   end
 
   def test_dynamic_find_should_respect_association_include
@@ -281,8 +322,12 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     assert_equal 2, people(:michael).jobs.size
   end
 
-  def test_get_ids
-    assert_equal [posts(:welcome).id, posts(:authorless).id].sort, people(:michael).post_ids.sort
+  def test_get_ids_for_belongs_to_source
+    assert_sql(/DISTINCT/) { assert_equal [posts(:welcome).id, posts(:authorless).id].sort, people(:michael).post_ids.sort }
+  end
+
+  def test_get_ids_for_has_many_source
+    assert_equal [comments(:eager_other_comment1).id], authors(:mary).comment_ids
   end
 
   def test_get_ids_for_loaded_associations
@@ -344,6 +389,53 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     ].each {|block| assert_raise(ActiveRecord::HasManyThroughCantAssociateThroughHasOneOrManyReflection, &block) }
   end
 
+  def test_collection_singular_ids_getter_with_string_primary_keys
+    book = books(:awdr)
+    assert_equal 2, book.subscriber_ids.size
+    assert_equal [subscribers(:first).nick, subscribers(:second).nick].sort, book.subscriber_ids.sort
+  end
+
+  def test_collection_singular_ids_setter
+    company = companies(:rails_core)
+    dev = Developer.find(:first)
+
+    company.developer_ids = [dev.id]
+    assert_equal [dev], company.developers
+  end
+
+  def test_collection_singular_ids_setter_with_string_primary_keys
+    assert_nothing_raised do
+      book = books(:awdr)
+      book.subscriber_ids = [subscribers(:second).nick]
+      assert_equal [subscribers(:second)], book.subscribers(true)
+
+      book.subscriber_ids = []
+      assert_equal [], book.subscribers(true)
+    end
+
+  end
+
+  def test_collection_singular_ids_setter_raises_exception_when_invalid_ids_set
+    company = companies(:rails_core)
+    ids =  [Developer.find(:first).id, -9999]
+    assert_raises(ActiveRecord::RecordNotFound) {company.developer_ids= ids}
+  end
+
+  def test_build_a_model_from_hm_through_association_with_where_clause
+    assert_nothing_raised { books(:awdr).subscribers.where(:nick => "marklazz").build }
+  end
+
+  def test_attributes_are_being_set_when_initialized_from_hm_through_association_with_where_clause
+    new_subscriber = books(:awdr).subscribers.where(:nick => "marklazz").build
+    assert_equal new_subscriber.nick, "marklazz"
+  end
+
+  def test_attributes_are_being_set_when_initialized_from_hm_through_association_with_multiple_where_clauses
+    new_subscriber = books(:awdr).subscribers.where(:nick => "marklazz").where(:name => 'Marcelo Giorgi').build
+    assert_equal new_subscriber.nick, "marklazz"
+    assert_equal new_subscriber.name, "Marcelo Giorgi"
+  end
+
   def test_include_method_in_association_through_should_return_true_for_instance_added_with_build
     person = Person.new
     reference = person.references.build
@@ -356,5 +448,12 @@ class HasManyThroughAssociationsTest < ActiveRecord::TestCase
     post = author.posts.build
     comment = post.comments.build
     assert author.comments.include?(comment)
+  end
+
+  def test_size_of_through_association_should_increase_correctly_when_has_many_association_is_added
+    post = posts(:thinking)
+    readers = post.readers.size
+    post.people << people(:michael)
+    assert_equal readers + 1, post.readers.size
   end
 end

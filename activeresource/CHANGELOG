@@ -1,26 +1,16 @@
-*2.3.10 (October 15, 2010)*
-*2.3.9 (September 4, 2010)*
-*2.3.8 (May 24, 2010)*
-*2.3.7 (May 24, 2010)*
+*Rails 3.0.2 (November 15, 2010)*
 
-* Version bump.
+* No changes.
 
 
-*2.3.6 (May 23, 2010)*
+*Rails 3.0.1 (October 15, 2010)*
 
-* No changes, just a version bump.
+* No changes.
 
 
-*2.3.5 (November 25, 2009)*
+*Rails 3.0.0 (August 29, 2010)*
 
-* Minor Bug Fixes and deprecation warnings
-
-* More flexible content type handling when parsing responses.
-  
-  Ensures that ARes will handle responses like test/xml, or content types
-  with charsets included.
-
-*2.3.4 (September 4, 2009)*
+* JSON: set Base.include_root_in_json = true to include a root value in the JSON: {"post": {"title": ...}}. Mirrors the Active Record option.  [Santiago Pastorino]
 
 * Add support for errors in JSON format.  #1956 [Fabien Jakimowicz]
 
@@ -29,51 +19,6 @@
 * More thorough SSL support.  #2370 [Roy Nicholson]
 
 * HTTP proxy support.  #2133 [Marshall Huss, Sébastien Dabet]
-
-
-*2.3.3 (July 12, 2009)*
-
-* No changes, just a version bump.
-
-
-*2.3.2 [Final] (March 15, 2009)*
-
-* Nothing new, just included in 2.3.2
-
-
-*2.2.1 [RC2] (November 14th, 2008)*
-
-* Version bump.
-
-
-*2.3.6 (May 23, 2010)*
-
-* No changes, just a version bump.
-
-
-*2.3.5 (November 25, 2009)*
-
-* Minor Bug Fixes and deprecation warnings
-
-* More flexible content type handling when parsing responses.
-  
-  Ensures that ARes will handle responses like test/xml, or content types
-  with charsets included.
-
-*2.3.4 (September 4, 2009)*
-
-* Add support for errors in JSON format.  #1956 [Fabien Jakimowicz]
-
-* Recognizes 410 as Resource Gone. #2316 [Jordan Brough, Jatinder Singh]
-
-* More thorough SSL support.  #2370 [Roy Nicholson]
-
-* HTTP proxy support.  #2133 [Marshall Huss, Sébastien Dabet]
-
-
-*2.3.3 (July 12, 2009)*
-
-* No changes, just a version bump.
 
 
 *2.3.2 [Final] (March 15, 2009)*
@@ -84,6 +29,9 @@
 *2.2.1 [RC2] (November 14th, 2008)*
 
 * Fixed that ActiveResource#post would post an empty string when it shouldn't be posting anything #525 [Paolo Angelini]
+
+
+*2.2.0 [RC1] (October 24th, 2008)*
 
 * Add ActiveResource::Base#to_xml and ActiveResource::Base#to_json. #1011 [Rasik Pandey, Cody Fauser]
 
@@ -136,7 +84,7 @@
       ActiveResource::HttpMock.respond_to do |mock|
         mock.get "/people/1.xml", {}, "<person><name>David</name></person>"
       end
-      
+
     Now:
       ActiveResource::HttpMock.respond_to.get "/people/1.xml", {}, "<person><name>David</name></person>"
 
@@ -146,14 +94,14 @@
       self.site   = "http://app/"
       self.format = :json
     end
-    
+
     person = Person.find(1) # => GET http://app/people/1.json
     person.name = "David"
     person.save             # => PUT http://app/people/1.json {name: "David"}
-    
+
     Person.format = :xml
     person.name = "Mary"
-    person.save             # => PUT http://app/people/1.json <person><name>Mary</name></person>    
+    person.save             # => PUT http://app/people/1.json <person><name>Mary</name></person>
 
 * Fix reload error when path prefix is used.  #8727 [Ian Warshak]
 
@@ -182,7 +130,7 @@
   class Project
     headers['X-Token'] = 'foo'
   end
-  
+
   # makes the GET request with the custom X-Token header
   Project.find(:all)
 
@@ -205,7 +153,7 @@
     end
 
   assert_kind_of Highrise::Comment, Note.find(1).comments.first
-    
+
 
 * Added load_attributes_from_response as a way of loading attributes from other responses than just create [David Heinemeier Hansson]
 
@@ -297,8 +245,8 @@ d
 
 * Basic validation support [Rick Olson]
 
-  Parses the xml response of ActiveRecord::Errors#to_xml with a similar interface to ActiveRecord::Errors.  
-  
+  Parses the xml response of ActiveRecord::Errors#to_xml with a similar interface to ActiveRecord::Errors.
+
     render :xml => @person.errors.to_xml, :status => '400 Validation Error'
 
 * Deep hashes are converted into collections of resources.  [Jeremy Kemper]
@@ -316,12 +264,12 @@ d
   * Add support for specifying prefixes.
   * Allow overriding of element_name, collection_name, and primary key
   * Provide simpler HTTP mock interface for testing
-  
+
     # rails routing code
     map.resources :posts do |post|
       post.resources :comments
     end
-    
+
     # ActiveResources
     class Post < ActiveResource::Base
       self.site = "http://37s.sunrise.i:3000/"
@@ -330,7 +278,7 @@ d
     class Comment < ActiveResource::Base
       self.site = "http://37s.sunrise.i:3000/posts/:post_id/"
     end
-    
+
     @post     = Post.find 5
     @comments = Comment.find :all, :post_id => @post.id
 

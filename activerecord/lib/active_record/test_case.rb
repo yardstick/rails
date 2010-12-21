@@ -1,6 +1,7 @@
-require "active_support/test_case"
-
 module ActiveRecord
+  # = Active Record Test Case
+  #
+  # Defines some test assertions to test against SQL queries.
   class TestCase < ActiveSupport::TestCase #:nodoc:
     def assert_date_from_db(expected, actual, message = nil)
       # SybaseAdapter doesn't have a separate column type just for dates,
@@ -20,7 +21,7 @@ module ActiveRecord
       patterns_to_match.each do |pattern|
         failed_patterns << pattern unless $queries_executed.any?{ |sql| pattern === sql }
       end
-      assert failed_patterns.empty?, "Query pattern(s) #{failed_patterns.map(&:inspect).join(', ')} not found."
+      assert failed_patterns.empty?, "Query pattern(s) #{failed_patterns.map{ |p| p.inspect }.join(', ')} not found.#{$queries_executed.size == 0 ? '' : "\nQueries:\n#{$queries_executed.join("\n")}"}"
     end
 
     def assert_queries(num = 1)

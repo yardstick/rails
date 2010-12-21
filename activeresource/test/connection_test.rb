@@ -83,7 +83,7 @@ class ConnectionTest < Test::Unit::TestCase
     begin
       handle_response ResponseHeaderStub.new(405, "HTTP Failed...", "GET, POST")
     rescue ActiveResource::MethodNotAllowed => e
-      assert_equal "Failed with 405 HTTP Failed...", e.message
+      assert_equal "Failed.  Response code = 405.  Response message = HTTP Failed....", e.message
       assert_equal [:get, :post], e.allowed_methods
     end
   end
@@ -140,12 +140,12 @@ class ConnectionTest < Test::Unit::TestCase
     assert_equal "Matz", people[0]["name"]
     assert_equal "David", people[1]["name"]
   end
-  
+
   def test_get_collection_single
     people = @conn.get("/people_single_elements.xml")
     assert_equal "Matz", people[0]["name"]
   end
-  
+
   def test_get_collection_empty
     people = @conn.get("/people_empty_elements.xml")
     assert_equal [], people
@@ -223,6 +223,21 @@ class ConnectionTest < Test::Unit::TestCase
     @conn.expects(:http).returns(http)
     http.expects(:get).raises(OpenSSL::SSL::SSLError, 'Expired certificate')
     assert_raise(ActiveResource::SSLError) { @conn.get('/people/1.xml') }
+  end
+
+  def test_auth_type_can_be_string
+    @conn.auth_type = 'digest'
+    assert_equal(:digest, @conn.auth_type)
+  end
+
+  def test_auth_type_defaults_to_basic
+    @conn.auth_type = nil
+    assert_equal(:basic, @conn.auth_type)
+  end
+
+  def test_auth_type_ignores_nonsensical_values
+    @conn.auth_type = :wibble
+    assert_equal(:basic, @conn.auth_type)
   end
 
   protected

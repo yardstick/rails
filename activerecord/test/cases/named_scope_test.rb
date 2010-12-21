@@ -1,4 +1,5 @@
 require "cases/helper"
+require 'active_support/core_ext/array/random_access'
 require 'models/post'
 require 'models/topic'
 require 'models/comment'
@@ -8,11 +9,6 @@ require 'models/developer'
 
 class NamedScopeTest < ActiveRecord::TestCase
   fixtures :posts, :authors, :topics, :comments, :author_addresses
-
-  def test_named_scope_with_STI
-    assert_equal 5,Post.with_type_self.count
-    assert_equal 1,SpecialPost.with_type_self.count
-  end
 
   def test_implements_enumerable
     assert !Topic.find(:all).empty?
@@ -35,7 +31,7 @@ class NamedScopeTest < ActiveRecord::TestCase
 
   def test_reload_expires_cache_of_found_items
     all_posts = Topic.base
-    all_posts.inspect
+    all_posts.all
 
     new_post = Topic.create!
     assert !all_posts.include?(new_post)
@@ -52,14 +48,14 @@ class NamedScopeTest < ActiveRecord::TestCase
   end
 
   def test_scope_should_respond_to_own_methods_and_methods_of_the_proxy
-    assert Topic.approved.respond_to?(:proxy_found)
+    assert Topic.approved.respond_to?(:limit)
     assert Topic.approved.respond_to?(:count)
     assert Topic.approved.respond_to?(:length)
   end
 
   def test_respond_to_respects_include_private_parameter
-    assert !Topic.approved.respond_to?(:load_found)
-    assert Topic.approved.respond_to?(:load_found, true)
+    assert !Topic.approved.respond_to?(:tables_in_string)
+    assert Topic.approved.respond_to?(:tables_in_string, true)
   end
 
   def test_subclasses_inherit_scopes
@@ -87,8 +83,8 @@ class NamedScopeTest < ActiveRecord::TestCase
   end
 
   def test_scopes_are_composable
-    assert_equal (approved = Topic.find(:all, :conditions => {:approved => true})), Topic.approved
-    assert_equal (replied = Topic.find(:all, :conditions => 'replies_count > 0')), Topic.replied
+    assert_equal((approved = Topic.find(:all, :conditions => {:approved => true})), Topic.approved)
+    assert_equal((replied = Topic.find(:all, :conditions => 'replies_count > 0')), Topic.replied)
     assert !(approved == replied)
     assert !(approved & replied).empty?
 
@@ -126,7 +122,7 @@ class NamedScopeTest < ActiveRecord::TestCase
       :joins => 'JOIN authors ON authors.id = posts.author_id',
       :conditions => [ 'authors.author_address_id = ?', address.id ]
     )
-    assert_equal posts_with_authors_at_address_titles, Post.with_authors_at_address(address).find(:all, :select => 'title')
+    assert_equal posts_with_authors_at_address_titles.map(&:title), Post.with_authors_at_address(address).find(:all, :select => 'title').map(&:title)
   end
 
   def test_extensions
@@ -146,10 +142,9 @@ class NamedScopeTest < ActiveRecord::TestCase
     assert_equal authors(:david).posts & Post.containing_the_letter_a, authors(:david).posts.containing_the_letter_a
   end
 
-  def test_nested_named_scopes_doesnt_duplicate_conditions_on_child_scopes
-    comments_scope = posts(:welcome).comments.send(:construct_sql)
-    named_scope_sql_conditions = posts(:welcome).comments.containing_the_letter_e.send(:current_scoped_methods)[:find][:conditions]
-    assert_no_match /#{comments_scope}.*#{comments_scope}/i, named_scope_sql_conditions
+  def test_named_scope_with_STI
+    assert_equal 3,Post.containing_the_letter_a.count
+    assert_equal 1,SpecialPost.containing_the_letter_a.count
   end
 
   def test_has_many_through_associations_have_access_to_named_scopes
@@ -160,12 +155,13 @@ class NamedScopeTest < ActiveRecord::TestCase
   end
 
   def test_named_scopes_honor_current_scopes_from_when_defined
-    assert !Post.ranked_by_comments.limit(5).empty?
-    assert !authors(:david).posts.ranked_by_comments.limit(5).empty?
-    assert_not_equal Post.ranked_by_comments.limit(5), authors(:david).posts.ranked_by_comments.limit(5)
+    assert !Post.ranked_by_comments.limit_by(5).empty?
+    assert !authors(:david).posts.ranked_by_comments.limit_by(5).empty?
+    assert_not_equal Post.ranked_by_comments.limit_by(5), authors(:david).posts.ranked_by_comments.limit_by(5)
     assert_not_equal Post.top(5), authors(:david).posts.top(5)
-    assert_equal authors(:david).posts.ranked_by_comments.limit(5), authors(:david).posts.top(5)
-    assert_equal Post.ranked_by_comments.limit(5), Post.top(5)
+    # Oracle sometimes sorts differently if WHERE condition is changed
+    assert_equal authors(:david).posts.ranked_by_comments.limit_by(5).to_a.sort_by(&:id), authors(:david).posts.top(5).to_a.sort_by(&:id)
+    assert_equal Post.ranked_by_comments.limit_by(5), Post.top(5)
   end
 
   def test_active_records_have_scope_named__all__
@@ -178,11 +174,6 @@ class NamedScopeTest < ActiveRecord::TestCase
     assert !Topic.find(:all, scope = {:conditions => "content LIKE '%Have%'"}).empty?
 
     assert_equal Topic.find(:all, scope), Topic.scoped(scope)
-  end
-
-  def test_proxy_options
-    expected_proxy_options = { :conditions => { :approved => true } }
-    assert_equal expected_proxy_options, Topic.approved.proxy_options
   end
 
   def test_first_and_last_should_support_find_options
@@ -245,38 +236,72 @@ class NamedScopeTest < ActiveRecord::TestCase
     assert_no_queries { assert topics.any? }
   end
 
-  def test_should_build_with_proxy_options
+  def test_many_should_not_load_results
+    topics = Topic.base
+    assert_queries(2) do
+      topics.many?   # use count query
+      topics.collect # force load
+      topics.many?   # use loaded (no query)
+    end
+  end
+
+  def test_many_should_call_proxy_found_if_using_a_block
+    topics = Topic.base
+    assert_queries(1) do
+      topics.expects(:size).never
+      topics.many? { true }
+    end
+  end
+
+  def test_many_should_not_fire_query_if_named_scope_loaded
+    topics = Topic.base
+    topics.collect # force load
+    assert_no_queries { assert topics.many? }
+  end
+
+  def test_many_should_return_false_if_none_or_one
+    topics = Topic.base.scoped(:conditions => {:id => 0})
+    assert !topics.many?
+    topics = Topic.base.scoped(:conditions => {:id => 1})
+    assert !topics.many?
+  end
+
+  def test_many_should_return_true_if_more_than_one
+    assert Topic.base.many?
+  end
+
+  def test_should_build_on_top_of_named_scope
     topic = Topic.approved.build({})
     assert topic.approved
   end
 
-  def test_should_build_new_with_proxy_options
+  def test_should_build_new_on_top_of_named_scope
     topic = Topic.approved.new
     assert topic.approved
   end
 
-  def test_should_create_with_proxy_options
+  def test_should_create_on_top_of_named_scope
     topic = Topic.approved.create({})
     assert topic.approved
   end
 
-  def test_should_create_with_bang_with_proxy_options
+  def test_should_create_with_bang_on_top_of_named_scope
     topic = Topic.approved.create!({})
     assert topic.approved
   end
 
-  def test_should_build_with_proxy_options_chained
+  def test_should_build_on_top_of_chained_named_scopes
     topic = Topic.approved.by_lifo.build({})
     assert topic.approved
     assert_equal 'lifo', topic.author_name
   end
 
   def test_find_all_should_behave_like_select
-    assert_equal Topic.base.select(&:approved), Topic.base.find_all(&:approved)
+    assert_equal Topic.base.to_a.select(&:approved), Topic.base.to_a.find_all(&:approved)
   end
 
   def test_rand_should_select_a_random_object_from_proxy
-    assert Topic.approved.sample.is_a?(Topic)
+    assert_kind_of Topic, Topic.approved.sample
   end
 
   def test_should_use_where_in_query_for_named_scope
@@ -320,8 +345,8 @@ class NamedScopeTest < ActiveRecord::TestCase
 
   def test_chaining_should_use_latest_conditions_when_searching
     # Normal hash conditions
-    assert_equal Topic.all(:conditions => {:approved => true}), Topic.rejected.approved.all
-    assert_equal Topic.all(:conditions => {:approved => false}), Topic.approved.rejected.all
+    assert_equal Topic.where(:approved => true).to_a, Topic.rejected.approved.all
+    assert_equal Topic.where(:approved => false).to_a, Topic.approved.rejected.all
 
     # Nested hash conditions with same keys
     assert_equal [posts(:sti_comments)], Post.with_special_comments.with_very_special_comments.all
@@ -349,9 +374,91 @@ class NamedScopeTest < ActiveRecord::TestCase
       Comment.for_first_post.for_first_author.all
     end
   end
+
+  def test_named_scopes_with_reserved_names
+    class << Topic
+      def public_method; end
+      public :public_method
+
+      def protected_method; end
+      protected :protected_method
+
+      def private_method; end
+      private :private_method
+    end
+
+    [:public_method, :protected_method, :private_method].each do |reserved_method|
+      assert Topic.respond_to?(reserved_method, true)
+      ActiveRecord::Base.logger.expects(:warn)
+      Topic.scope(reserved_method)
+    end
+  end
+
+  def test_deprecated_named_scope_method
+    assert_deprecated('named_scope has been deprecated') { Topic.named_scope :deprecated_named_scope }
+  end
+
+  def test_named_scopes_on_relations
+    # Topic.replied
+    approved_topics = Topic.scoped.approved.order('id DESC')
+    assert_equal topics(:fourth), approved_topics.first
+
+    replied_approved_topics = approved_topics.replied
+    assert_equal topics(:third), replied_approved_topics.first
+  end
+
+  def test_index_on_named_scope
+    approved = Topic.approved.order('id ASC')
+    assert_equal topics(:second), approved[0]
+    assert approved.loaded?
+  end
+
+  def test_nested_named_scopes_queries_size
+    assert_queries(1) do
+      Topic.approved.by_lifo.replied.written_before(Time.now).all
+    end
+  end
+
+  def test_named_scopes_are_cached_on_associations
+    post = posts(:welcome)
+
+    assert_equal post.comments.containing_the_letter_e.object_id, post.comments.containing_the_letter_e.object_id
+
+    post.comments.containing_the_letter_e.all # force load
+    assert_no_queries { post.comments.containing_the_letter_e.all }
+  end
+
+  def test_named_scopes_with_arguments_are_cached_on_associations
+    post = posts(:welcome)
+
+    one = post.comments.limit_by(1).all
+    assert_equal 1, one.size
+
+    two = post.comments.limit_by(2).all
+    assert_equal 2, two.size
+
+    assert_no_queries { post.comments.limit_by(1).all }
+    assert_no_queries { post.comments.limit_by(2).all }
+  end
+
+  def test_named_scopes_are_reset_on_association_reload
+    post = posts(:welcome)
+
+    [:destroy_all, :reset, :delete_all].each do |method|
+      before = post.comments.containing_the_letter_e
+      post.comments.send(method)
+      assert before.object_id != post.comments.containing_the_letter_e.object_id, "AssociationCollection##{method} should reset the named scopes cache"
+    end
+  end
+
+  def test_named_scoped_are_lazy_loaded_if_table_still_does_not_exist
+    assert_nothing_raised do
+      require "models/without_table"
+    end
+  end
 end
 
-class DynamicScopeMatchTest < ActiveRecord::TestCase  
+class DynamicScopeMatchTest < ActiveRecord::TestCase
   def test_scoped_by_no_match
     assert_nil ActiveRecord::DynamicScopeMatch.match("not_scoped_at_all")
   end
@@ -365,8 +472,16 @@ class DynamicScopeMatchTest < ActiveRecord::TestCase
 end
 
 class DynamicScopeTest < ActiveRecord::TestCase
+  fixtures :posts
+
   def test_dynamic_scope
     assert_equal Post.scoped_by_author_id(1).find(1), Post.find(1)
     assert_equal Post.scoped_by_author_id_and_title(1, "Welcome to the weblog").first, Post.find(:first, :conditions => { :author_id => 1, :title => "Welcome to the weblog"})
+  end
+
+  def test_dynamic_scope_should_create_methods_after_hitting_method_missing
+    assert_blank Developer.methods.grep(/scoped_by_created_at/)
+    Developer.scoped_by_created_at(nil)
+    assert_present Developer.methods.grep(/scoped_by_created_at/)
   end
 end

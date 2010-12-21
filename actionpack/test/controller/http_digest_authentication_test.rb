@@ -38,6 +38,16 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
 
   tests DummyDigestController
 
+  setup do
+    # Used as secret in generating nonce to prevent tampering of timestamp
+    @secret = "session_options_secret"
+    @request.env["action_dispatch.secret_token"] = @secret
+  end
+
+  teardown do
+    # ActionController::Base.session_options[:secret] = @old_secret
+  end
+
   AUTH_HEADERS.each do |header|
     test "successful authentication with #{header.downcase}" do
       @request.env[header] = encode_credentials(:username => 'lifo', :password => 'world')
@@ -92,23 +102,6 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
     assert_equal "Authentication Failed", @response.body
   end
 
-  test "authentication request with missing nonce should return 401" do
-    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'please', :remove_nonce => true)
-    get :display
-
-    assert_response :unauthorized
-    assert_equal "Authentication Failed", @response.body
-  end
-
-  test "authentication request with Basic auth credentials should return 401" do
-    ActionController::Base.session_options[:secret] = "session_options_secret"
-    @request.env['HTTP_AUTHORIZATION'] = ActionController::HttpAuthentication::Basic.encode_credentials('pretty', 'please')
-    get :display
-
-    assert_response :unauthorized
-    assert_equal "Authentication Failed", @response.body
-  end
-
   test "authentication request with invalid opaque" do
     @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'foo', :opaque => "xxyyzz")
     get :display
@@ -137,8 +130,6 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
   test "authentication request with valid credential and nil session" do
     @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'please')
 
-    # session_id = "" in functional test, but is +nil+ in real life
-    @request.session.session_id = nil
     get :display
 
     assert_response :success
@@ -148,7 +139,7 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
 
   test "authentication request with request-uri that doesn't match credentials digest-uri" do
     @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'please')
-    @request.env['REQUEST_URI'] = "/http_digest_authentication_test/dummy_digest/altered/uri"
+    @request.env['PATH_INFO'] = "/http_digest_authentication_test/dummy_digest/altered/uri"
     get :display
 
     assert_response :unauthorized
@@ -157,7 +148,8 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
 
   test "authentication request with absolute request uri (as in webrick)" do
     @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'please')
-    @request.env['REQUEST_URI'] = "http://test.host/http_digest_authentication_test/dummy_digest"
+    @request.env["SERVER_NAME"] = "test.host"
+    @request.env['PATH_INFO'] = "/http_digest_authentication_test/dummy_digest"
 
     get :display
 
@@ -180,7 +172,8 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
   test "authentication request with absolute uri in both request and credentials (as in Webrick with IE)" do
     @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:url => "http://test.host/http_digest_authentication_test/dummy_digest",
                                                             :username => 'pretty', :password => 'please')
-    @request.env['REQUEST_URI'] = "http://test.host/http_digest_authentication_test/dummy_digest"
+    @request.env['SERVER_NAME'] = "test.host"
+    @request.env['PATH_INFO'] = "/http_digest_authentication_test/dummy_digest"
 
     get :display
 
@@ -221,10 +214,6 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
     options.reverse_merge!(:nc => "00000001", :cnonce => "0a4f113b", :password_is_ha1 => false)
     password = options.delete(:password)
 
-    # Set in /initializers/session_store.rb. Used as secret in generating nonce
-    # to prevent tampering of timestamp
-    ActionController::Base.session_options[:secret] = "session_options_secret"
-
     # Perform unauthenticated request to retrieve digest parameters to use on subsequent request
     method = options.delete(:method) || 'GET'
 
@@ -237,14 +226,9 @@ class HttpDigestAuthenticationTest < ActionController::TestCase
 
     assert_response :unauthorized
 
-    remove_nonce = options.delete(:remove_nonce)
-
     credentials = decode_credentials(@response.headers['WWW-Authenticate'])
     credentials.merge!(options)
-    credentials.merge!(:uri => @request.env['REQUEST_URI'].to_s)
-
-    credentials.delete(:nonce) if remove_nonce
-
+    credentials.merge!(:uri => @request.env['PATH_INFO'].to_s)
     ActionController::HttpAuthentication::Digest.encode_credentials(method, credentials, password, options[:password_is_ha1])
   end
 

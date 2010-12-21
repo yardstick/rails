@@ -1,4 +1,6 @@
 require 'abstract_unit'
+require 'controller/fake_controllers'
+require 'action_controller/vendor/html-scanner'
 
 class SessionTest < Test::Unit::TestCase
   StubApp = lambda { |env|
@@ -30,7 +32,7 @@ class SessionTest < Test::Unit::TestCase
 
   def test_request_via_redirect_uses_given_method
     path = "/somepath"; args = {:id => '1'}; headers = {"X-Test-Header" => "testvalue"}
-    @session.expects(:put).with(path, args, headers)
+    @session.expects(:process).with(:put, path, args, headers)
     @session.stubs(:redirect?).returns(false)
     @session.request_via_redirect(:put, path, args, headers)
   end
@@ -73,33 +75,6 @@ class SessionTest < Test::Unit::TestCase
     @session.delete_via_redirect(path, args, headers)
   end
 
-  def test_url_for_with_controller
-    options = {:action => 'show'}
-    mock_controller = mock()
-    mock_controller.expects(:url_for).with(options).returns('/show')
-    @session.stubs(:controller).returns(mock_controller)
-    assert_equal '/show', @session.url_for(options)
-  end
-
-  def test_url_for_without_controller
-    options = {:action => 'show'}
-    mock_rewriter = mock()
-    mock_rewriter.expects(:rewrite).with(options).returns('/show')
-    @session.stubs(:generic_url_rewriter).returns(mock_rewriter)
-    @session.stubs(:controller).returns(nil)
-    assert_equal '/show', @session.url_for(options)
-  end
-
-  def test_redirect_bool_with_status_in_300s
-    @session.stubs(:status).returns 301
-    assert @session.redirect?
-  end
-
-  def test_redirect_bool_with_status_in_200s
-    @session.stubs(:status).returns 200
-    assert !@session.redirect?
-  end
-
   def test_get
     path = "/index"; params = "blah"; headers = {:location => 'blah'}
     @session.expects(:process).with(:get,path,params,headers)
@@ -133,8 +108,8 @@ class SessionTest < Test::Unit::TestCase
   def test_xml_http_request_get
     path = "/index"; params = "blah"; headers = {:location => 'blah'}
     headers_after_xhr = headers.merge(
-      "X-Requested-With" => "XMLHttpRequest",
-      "Accept"           => "text/javascript, text/html, application/xml, text/xml, */*"
+      "HTTP_X_REQUESTED_WITH" => "XMLHttpRequest",
+      "HTTP_ACCEPT"           => "text/javascript, text/html, application/xml, text/xml, */*"
     )
     @session.expects(:process).with(:get,path,params,headers_after_xhr)
     @session.xml_http_request(:get,path,params,headers)
@@ -143,8 +118,8 @@ class SessionTest < Test::Unit::TestCase
   def test_xml_http_request_post
     path = "/index"; params = "blah"; headers = {:location => 'blah'}
     headers_after_xhr = headers.merge(
-      "X-Requested-With" => "XMLHttpRequest",
-      "Accept"           => "text/javascript, text/html, application/xml, text/xml, */*"
+      "HTTP_X_REQUESTED_WITH" => "XMLHttpRequest",
+      "HTTP_ACCEPT"           => "text/javascript, text/html, application/xml, text/xml, */*"
     )
     @session.expects(:process).with(:post,path,params,headers_after_xhr)
     @session.xml_http_request(:post,path,params,headers)
@@ -153,8 +128,8 @@ class SessionTest < Test::Unit::TestCase
   def test_xml_http_request_put
     path = "/index"; params = "blah"; headers = {:location => 'blah'}
     headers_after_xhr = headers.merge(
-      "X-Requested-With" => "XMLHttpRequest",
-      "Accept"           => "text/javascript, text/html, application/xml, text/xml, */*"
+      "HTTP_X_REQUESTED_WITH" => "XMLHttpRequest",
+      "HTTP_ACCEPT"           => "text/javascript, text/html, application/xml, text/xml, */*"
     )
     @session.expects(:process).with(:put,path,params,headers_after_xhr)
     @session.xml_http_request(:put,path,params,headers)
@@ -163,8 +138,8 @@ class SessionTest < Test::Unit::TestCase
   def test_xml_http_request_delete
     path = "/index"; params = "blah"; headers = {:location => 'blah'}
     headers_after_xhr = headers.merge(
-      "X-Requested-With" => "XMLHttpRequest",
-      "Accept"           => "text/javascript, text/html, application/xml, text/xml, */*"
+      "HTTP_X_REQUESTED_WITH" => "XMLHttpRequest",
+      "HTTP_ACCEPT"           => "text/javascript, text/html, application/xml, text/xml, */*"
     )
     @session.expects(:process).with(:delete,path,params,headers_after_xhr)
     @session.xml_http_request(:delete,path,params,headers)
@@ -173,17 +148,17 @@ class SessionTest < Test::Unit::TestCase
   def test_xml_http_request_head
     path = "/index"; params = "blah"; headers = {:location => 'blah'}
     headers_after_xhr = headers.merge(
-      "X-Requested-With" => "XMLHttpRequest",
-      "Accept"           => "text/javascript, text/html, application/xml, text/xml, */*"
+      "HTTP_X_REQUESTED_WITH" => "XMLHttpRequest",
+      "HTTP_ACCEPT"           => "text/javascript, text/html, application/xml, text/xml, */*"
     )
     @session.expects(:process).with(:head,path,params,headers_after_xhr)
     @session.xml_http_request(:head,path,params,headers)
   end
 
   def test_xml_http_request_override_accept
-    path = "/index"; params = "blah"; headers = {:location => 'blah', "Accept" => "application/xml"}
+    path = "/index"; params = "blah"; headers = {:location => 'blah', "HTTP_ACCEPT" => "application/xml"}
     headers_after_xhr = headers.merge(
-      "X-Requested-With" => "XMLHttpRequest"
+      "HTTP_X_REQUESTED_WITH" => "XMLHttpRequest"
     )
     @session.expects(:process).with(:post,path,params,headers_after_xhr)
     @session.xml_http_request(:post,path,params,headers)
@@ -198,14 +173,12 @@ class IntegrationTestTest < Test::Unit::TestCase
   end
 
   def test_opens_new_session
-    @test.class.expects(:fixture_table_names).times(2).returns(['foo'])
-
     session1 = @test.open_session { |sess| }
     session2 = @test.open_session # implicit session
 
-    assert_equal ::ActionController::Integration::Session, session1.class
-    assert_equal ::ActionController::Integration::Session, session2.class
-    assert_not_equal session1, session2
+    assert_respond_to session1, :assert_template, "open_session makes assert_template available"
+    assert_respond_to session2, :assert_template, "open_session makes assert_template available"
+    assert !session1.equal?(session2)
   end
 
   # RSpec mixes Matchers (which has a #method_missing) into
@@ -224,24 +197,6 @@ class IntegrationTestTest < Test::Unit::TestCase
       # leave other tests as unaffected as possible
       mixin.__send__(:remove_method, :method_missing)
     end
-  end
-end
-
-require 'active_record_unit'
-# Tests that fixtures are accessible in the integration test sessions
-class IntegrationTestWithFixtures < ActiveRecordTestCase
-  include ActionController::Integration::Runner
-
-  fixtures :companies
-
-  def test_fixtures_in_new_session
-    sym = :thirty_seven_signals
-    # fixtures are accessible in main session
-    assert_not_nil companies(sym)
-
-    # create a new session and the fixtures should be accessible in it as well
-    session1 = open_session { |sess| }
-    assert_not_nil session1.companies(sym)
   end
 end
 
@@ -276,24 +231,12 @@ class IntegrationProcessTest < ActionController::IntegrationTest
       render :text => "foo: #{params[:foo]}", :status => 200
     end
 
-    def post_with_multiparameter_params
-      render :text => "foo(1i): #{params[:"foo(1i)"]}, foo(2i): #{params[:"foo(2i)"]}", :status => 200
-    end
-
-    def multipart_post_with_multiparameter_params
-      render :text => "foo(1i): #{params[:"foo(1i)"]}, foo(2i): #{params[:"foo(2i)"]}, filesize: #{params[:file].size}", :status => 200
-    end
-
-    def multipart_post_with_nested_params
-      render :text => "foo: #{params[:foo][0]}, #{params[:foo][1]}; [filesize: #{params[:file_list][0][:content].size}, filesize: #{params[:file_list][1][:content].size}]", :status => 200
-    end
-
-    def multipart_post_with_multiparameter_complex_params
-      render :text => "foo(1i): #{params[:"foo(1i)"]}, foo(2i): #{params[:"foo(2i)"]}, [filesize: #{params[:file_list][0][:content].size}, filesize: #{params[:file_list][1][:content].size}]", :status => 200
-    end
-
     def post
       render :text => "Created", :status => 201
+    end
+
+    def method
+      render :text => "method: #{request.method.downcase}"
     end
 
     def cookie_monster
@@ -302,12 +245,19 @@ class IntegrationProcessTest < ActionController::IntegrationTest
       render :text => "Gone", :status => 410
     end
 
+    def set_cookie
+      cookies["foo"] = 'bar'
+      head :ok
+    end
+
+    def get_cookie
+      render :text => cookies["foo"]
+    end
+
     def redirect
       redirect_to :action => "get"
     end
   end
-
-  FILES_DIR = File.dirname(__FILE__) + '/../fixtures/multipart'
 
   def test_get
     with_test_route_set do
@@ -317,7 +267,7 @@ class IntegrationProcessTest < ActionController::IntegrationTest
       assert_response 200
       assert_response :success
       assert_response :ok
-      assert_equal({}, cookies)
+      assert_equal({}, cookies.to_hash)
       assert_equal "OK", body
       assert_equal "OK", response.body
       assert_kind_of HTML::Document, html_document
@@ -333,7 +283,7 @@ class IntegrationProcessTest < ActionController::IntegrationTest
       assert_response 201
       assert_response :success
       assert_response :created
-      assert_equal({}, cookies)
+      assert_equal({}, cookies.to_hash)
       assert_equal "Created", body
       assert_equal "Created", response.body
       assert_kind_of HTML::Document, html_document
@@ -341,17 +291,49 @@ class IntegrationProcessTest < ActionController::IntegrationTest
     end
   end
 
-  def test_cookie_monster
+  test 'response cookies are added to the cookie jar for the next request' do
     with_test_route_set do
       self.cookies['cookie_1'] = "sugar"
       self.cookies['cookie_2'] = "oatmeal"
       get '/cookie_monster'
-      assert_equal 410, status
-      assert_equal "Gone", status_message
-      assert_response 410
-      assert_response :gone
-      assert_equal({"cookie_1"=>"", "cookie_2"=>"oatmeal", "cookie_3"=>"chocolate"}, cookies)
-      assert_equal "Gone", response.body
+      assert_equal "cookie_1=; path=/\ncookie_3=chocolate; path=/", headers["Set-Cookie"]
+      assert_equal({"cookie_1"=>"", "cookie_2"=>"oatmeal", "cookie_3"=>"chocolate"}, cookies.to_hash)
+    end
+  end
+
+  test 'cookie persist to next request' do
+    with_test_route_set do
+      get '/set_cookie'
+      assert_response :success
+
+      assert_equal "foo=bar; path=/", headers["Set-Cookie"]
+      assert_equal({"foo"=>"bar"}, cookies.to_hash)
+
+      get '/get_cookie'
+      assert_response :success
+      assert_equal "bar", body
+
+      assert_equal nil, headers["Set-Cookie"]
+      assert_equal({"foo"=>"bar"}, cookies.to_hash)
+    end
+  end
+
+  test 'cookie persist to next request on another domain' do
+    with_test_route_set do
+      host! "37s.backpack.test"
+
+      get '/set_cookie'
+      assert_response :success
+
+      assert_equal "foo=bar; path=/", headers["Set-Cookie"]
+      assert_equal({"foo"=>"bar"}, cookies.to_hash)
+
+      get '/get_cookie'
+      assert_response :success
+      assert_equal "bar", body
+
+      assert_equal nil, headers["Set-Cookie"]
+      assert_equal({"foo"=>"bar"}, cookies.to_hash)
     end
   end
 
@@ -389,8 +371,8 @@ class IntegrationProcessTest < ActionController::IntegrationTest
     with_test_route_set do
       get '/get_with_params?foo=bar'
       assert_equal '/get_with_params?foo=bar', request.env["REQUEST_URI"]
-      assert_equal '/get_with_params?foo=bar', request.request_uri
-      assert_equal "", request.env["QUERY_STRING"]
+      assert_equal '/get_with_params?foo=bar', request.fullpath
+      assert_equal "foo=bar", request.env["QUERY_STRING"]
       assert_equal 'foo=bar', request.query_string
       assert_equal 'bar', request.parameters['foo']
 
@@ -402,50 +384,14 @@ class IntegrationProcessTest < ActionController::IntegrationTest
   def test_get_with_parameters
     with_test_route_set do
       get '/get_with_params', :foo => "bar"
-      assert_equal '/get_with_params', request.env["REQUEST_URI"]
-      assert_equal '/get_with_params', request.request_uri
+      assert_equal '/get_with_params', request.env["PATH_INFO"]
+      assert_equal '/get_with_params', request.path_info
       assert_equal 'foo=bar', request.env["QUERY_STRING"]
       assert_equal 'foo=bar', request.query_string
       assert_equal 'bar', request.parameters['foo']
 
       assert_equal 200, status
       assert_equal "foo: bar", response.body
-    end
-  end
-
-  def test_post_with_multiparameter_attribute_parameters
-    with_test_route_set do
-      post '/post_with_multiparameter_params', :"foo(1i)" => "bar", :"foo(2i)" => "baz"
-
-      assert_equal 200, status
-      assert_equal "foo(1i): bar, foo(2i): baz", response.body
-    end
-  end
-
-  def test_multipart_post_with_multiparameter_attribute_parameters
-    with_test_route_set do
-      post '/multipart_post_with_multiparameter_params', :"foo(1i)" => "bar", :"foo(2i)" => "baz", :file => fixture_file_upload(FILES_DIR + "/mona_lisa.jpg", "image/jpg")
-
-      assert_equal 200, status
-      assert_equal "foo(1i): bar, foo(2i): baz, filesize: 159528", response.body
-    end
-  end
-
-  def test_multipart_post_with_nested_params
-    with_test_route_set do
-      post '/multipart_post_with_nested_params', :"foo" => ['a', 'b'], :file_list => [{:content => fixture_file_upload(FILES_DIR + "/mona_lisa.jpg", "image/jpg")}, {:content => fixture_file_upload(FILES_DIR + "/mona_lisa.jpg", "image/jpg")}]
-
-      assert_equal 200, status
-      assert_equal "foo: a, b; [filesize: 159528, filesize: 159528]", response.body
-    end
-  end
-
-  def test_multipart_post_with_multiparameter_complex_attribute_parameters
-    with_test_route_set do
-      post '/multipart_post_with_multiparameter_complex_params', :"foo(1i)" => "bar", :"foo(2i)" => "baz", :file_list => [{:content => fixture_file_upload(FILES_DIR + "/mona_lisa.jpg", "image/jpg")}, {:content => fixture_file_upload(FILES_DIR + "/mona_lisa.jpg", "image/jpg")}]
-
-      assert_equal 200, status
-      assert_equal "foo(1i): bar, foo(2i): baz, [filesize: 159528, filesize: 159528]", response.body
     end
   end
 
@@ -458,23 +404,44 @@ class IntegrationProcessTest < ActionController::IntegrationTest
       head '/post'
       assert_equal 201, status
       assert_equal "", body
+
+      get '/get/method'
+      assert_equal 200, status
+      assert_equal "method: get", body
+
+      head '/get/method'
+      assert_equal 200, status
+      assert_equal "", body
     end
+  end
+
+  def test_generate_url_with_controller
+    assert_equal 'http://www.example.com/foo', url_for(:controller => "foo")
   end
 
   private
     def with_test_route_set
       with_routing do |set|
-        set.draw do |map|
-          map.with_options :controller => "IntegrationProcessTest::Integration" do |c|
-            c.connect "/:action"
-          end
+        controller = ::IntegrationProcessTest::IntegrationController.clone
+        controller.class_eval do
+          include set.url_helpers
         end
+
+        set.draw do |map|
+          match ':action', :to => controller
+          get 'get/:action', :to => controller
+        end
+
+        self.singleton_class.send(:include, set.url_helpers)
+
         yield
       end
     end
 end
 
-class MetalTest < ActionController::IntegrationTest
+class MetalIntegrationTest < ActionController::IntegrationTest
+  include SharedTestRoutes.url_helpers
+
   class Poller
     def self.call(env)
       if env["PATH_INFO"] =~ /^\/success/
@@ -486,7 +453,7 @@ class MetalTest < ActionController::IntegrationTest
   end
 
   def setup
-    @integration_session = ActionController::Integration::Session.new(Poller)
+    @app = Poller
   end
 
   def test_successful_get
@@ -503,24 +470,55 @@ class MetalTest < ActionController::IntegrationTest
     assert_response :not_found
     assert_equal '', response.body
   end
+
+  def test_generate_url_without_controller
+    assert_equal 'http://www.example.com/foo', url_for(:controller => "foo")
+  end
 end
 
-class StringSubclassBodyTest < ActionController::IntegrationTest
-  class SafeString < String
-  end
-
-  class SafeStringMiddleware
-    def self.call(env)
-      [200, {"Content-Type" => "text/plain", "Content-Length" => "12"}, [SafeString.new("Hello World!")]]
+class ApplicationIntegrationTest < ActionController::IntegrationTest
+  class TestController < ActionController::Base
+    def index
+      render :text => "index"
     end
   end
 
-  def setup
-    @integration_session = ActionController::Integration::Session.new(SafeStringMiddleware)
+  def self.call(env)
+    routes.call(env)
   end
 
-  def test_string_subclass_body
-    get '/'
-    assert_equal 'Hello World!', response.body
+  def self.routes
+    @routes ||= ActionDispatch::Routing::RouteSet.new
+  end
+
+  routes.draw do
+    match 'foo', :to => 'application_integration_test/test#index', :as => :foo
+    match 'bar', :to => 'application_integration_test/test#index', :as => :bar
+  end
+
+  def app
+    self.class
+  end
+
+  test "includes route helpers" do
+    assert_equal '/foo', foo_path
+    assert_equal '/bar', bar_path
+  end
+
+  test "route helpers after controller access" do
+    get '/foo'
+    assert_equal '/foo', foo_path
+
+    get '/bar'
+    assert_equal '/bar', bar_path
+  end
+
+  test "missing route helper before controller access" do
+    assert_raise(NameError) { missing_path }
+  end
+
+  test "missing route helper after controller access" do
+    get '/foo'
+    assert_raise(NameError) { missing_path }
   end
 end

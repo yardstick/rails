@@ -1,15 +1,21 @@
+require 'active_support/core_ext/hash/except'
+require 'active_support/core_ext/object/try'
+require 'active_support/core_ext/object/blank'
+require 'active_support/core_ext/hash/indifferent_access'
+
 module ActiveRecord
   module NestedAttributes #:nodoc:
     class TooManyRecords < ActiveRecordError
     end
 
-    def self.included(base)
-      base.extend(ClassMethods)
-      base.class_inheritable_accessor :nested_attributes_options, :instance_writer => false
-      base.nested_attributes_options = {}
+    extend ActiveSupport::Concern
+
+    included do
+      class_inheritable_accessor :nested_attributes_options, :instance_writer => false
+      self.nested_attributes_options = {}
     end
 
-    # == Nested Attributes
+    # = Active Record Nested Attributes
     #
     # Nested attributes allow you to save attributes on associated records
     # through the parent. By default nested attribute updating is turned off,
@@ -19,6 +25,7 @@ module ActiveRecord
     #
     # The attribute writer is named after the association, which means that
     # in the following example, two new methods are added to your model:
+    #
     # <tt>author_attributes=(attributes)</tt> and
     # <tt>pages_attributes=(attributes)</tt>.
     #
@@ -45,14 +52,14 @@ module ActiveRecord
     # create the member and avatar in one go:
     #
     #   params = { :member => { :name => 'Jack', :avatar_attributes => { :icon => 'smiling' } } }
-    #   member = Member.create(params)
+    #   member = Member.create(params[:member])
     #   member.avatar.id # => 2
     #   member.avatar.icon # => 'smiling'
     #
     # It also allows you to update the avatar through the member:
     #
-    #   params = { :member' => { :avatar_attributes => { :id => '2', :icon => 'sad' } } }
-    #   member.update_attributes params['member']
+    #   params = { :member => { :avatar_attributes => { :id => '2', :icon => 'sad' } } }
+    #   member.update_attributes params[:member]
     #   member.avatar.icon # => 'sad'
     #
     # By default you will only be able to set and update attributes on the
@@ -71,7 +78,7 @@ module ActiveRecord
     #   member.avatar_attributes = { :id => '2', :_destroy => '1' }
     #   member.avatar.marked_for_destruction? # => true
     #   member.save
-    #   member.avatar #=> nil
+    #   member.reload.avatar # => nil
     #
     # Note that the model will _not_ be destroyed until the parent is saved.
     #
@@ -126,7 +133,7 @@ module ActiveRecord
     #   member.posts.first.title # => 'Kari, the awesome Ruby documentation browser!'
     #   member.posts.second.title # => 'The egalitarian assumption of the modern citizen'
     #
-    #  Alternatively, :reject_if also accepts a symbol for using methods:
+    # Alternatively, :reject_if also accepts a symbol for using methods:
     #
     #    class Member < ActiveRecord::Base
     #      has_many :posts
@@ -138,7 +145,7 @@ module ActiveRecord
     #      accepts_nested_attributes_for :posts, :reject_if => :reject_posts
     #
     #      def reject_posts(attributed)
-    #        attributed['title].blank?
+    #        attributed['title'].blank?
     #      end
     #    end
     #
@@ -173,9 +180,9 @@ module ActiveRecord
     #
     #   member.attributes = params['member']
     #   member.posts.detect { |p| p.id == 2 }.marked_for_destruction? # => true
-    #   member.posts.length #=> 2
+    #   member.posts.length # => 2
     #   member.save
-    #   member.posts.length # => 1
+    #   member.reload.posts.length # => 1
     #
     # === Saving
     #
@@ -206,7 +213,7 @@ module ActiveRecord
       #   that will reject a record where all the attributes are blank.
       # [:limit]
       #   Allows you to specify the maximum number of the associated records that
-      #   can be processes with the nested attributes. If the size of the
+      #   can be processed with the nested attributes. If the size of the
       #   nested attributes array exceeds the specified limit, NestedAttributes::TooManyRecords
       #   exception is raised. If omitted, any number associations can be processed.
       #   Note that the :limit option is only applicable to one-to-many associations.
@@ -239,11 +246,14 @@ module ActiveRecord
             # def pirate_attributes=(attributes)
             #   assign_nested_attributes_for_one_to_one_association(:pirate, attributes)
             # end
-            class_eval <<-EOS, __FILE__, __LINE__ + 1
+            class_eval <<-eoruby, __FILE__, __LINE__ + 1
+              if method_defined?(:#{association_name}_attributes=)
+                remove_method(:#{association_name}_attributes=)
+              end
               def #{association_name}_attributes=(attributes)
                 assign_nested_attributes_for_#{type}_association(:#{association_name}, attributes)
               end
-            EOS
+            eoruby
           else
             raise ArgumentError, "No association found for name `#{association_name}'. Has it been defined yet?"
           end
@@ -269,7 +279,7 @@ module ActiveRecord
     # Assigns the given attributes to the association.
     #
     # If update_only is false and the given attributes include an <tt>:id</tt>
-    # that matches the existing record’s id, then the existing record will be
+    # that matches the existing record's id, then the existing record will be
     # modified. If update_only is true, a new record is only created when no
     # object exists. Otherwise a new record will be built.
     #
@@ -283,9 +293,9 @@ module ActiveRecord
 
       if check_existing_record && (record = send(association_name)) &&
           (options[:update_only] || record.id.to_s == attributes['id'].to_s)
-        assign_to_or_mark_for_destruction(record, attributes, options[:allow_destroy])
+        assign_to_or_mark_for_destruction(record, attributes, options[:allow_destroy]) unless call_reject_if(association_name, attributes)
 
-      elsif attributes['id']
+      elsif !attributes['id'].blank?
         raise_nested_attributes_record_not_found(association_name, attributes['id'])
 
       elsif !reject_new_record?(association_name, attributes)
@@ -315,7 +325,7 @@ module ActiveRecord
     #   })
     #
     # Will update the name of the Person with ID 1, build a new associated
-    # person with the name `John', and mark the associatied Person with ID 2
+    # person with the name `John', and mark the associated Person with ID 2
     # for destruction.
     #
     # Also accepts an Array of attribute hashes:
@@ -337,7 +347,12 @@ module ActiveRecord
       end
 
       if attributes_collection.is_a? Hash
-        attributes_collection = attributes_collection.sort_by { |index, _| index.to_i }.map { |_, attributes| attributes }
+        keys = attributes_collection.keys
+        attributes_collection = if keys.include?('id') || keys.include?(:id)
+          Array.wrap(attributes_collection)
+        else
+          attributes_collection.sort_by { |i, _| i.to_i }.map { |_, attributes| attributes }
+        end
       end
 
       association = send(association_name)
@@ -356,9 +371,11 @@ module ActiveRecord
           unless reject_new_record?(association_name, attributes)
             association.build(attributes.except(*UNASSIGNABLE_KEYS))
           end
+
         elsif existing_record = existing_records.detect { |record| record.id.to_s == attributes['id'].to_s }
-          association.send(:add_record_to_target_with_callbacks, existing_record) unless association.loaded?
+          association.send(:add_record_to_target_with_callbacks, existing_record) if !association.loaded? && !call_reject_if(association_name, attributes)
           assign_to_or_mark_for_destruction(existing_record, attributes, options[:allow_destroy])
+
         else
           raise_nested_attributes_record_not_found(association_name, attributes['id'])
         end
@@ -368,11 +385,8 @@ module ActiveRecord
     # Updates a record with the +attributes+ or marks it for destruction if
     # +allow_destroy+ is +true+ and has_destroy_flag? returns +true+.
     def assign_to_or_mark_for_destruction(record, attributes, allow_destroy)
-      if has_destroy_flag?(attributes) && allow_destroy
-        record.mark_for_destruction
-      else
-        record.attributes = attributes.except(*UNASSIGNABLE_KEYS)
-      end
+      record.attributes = attributes.except(*UNASSIGNABLE_KEYS)
+      record.mark_for_destruction if has_destroy_flag?(attributes) && allow_destroy
     end
 
     # Determines if a hash contains a truthy _destroy key.

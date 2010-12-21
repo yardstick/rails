@@ -23,39 +23,39 @@ class InverseAssociationTests < ActiveRecord::TestCase
 
   def test_should_be_able_to_ask_a_reflection_if_it_has_an_inverse
     has_one_with_inverse_ref = Man.reflect_on_association(:face)
-    assert has_one_with_inverse_ref.respond_to?(:has_inverse?)
+    assert_respond_to has_one_with_inverse_ref, :has_inverse?
     assert has_one_with_inverse_ref.has_inverse?
 
     has_many_with_inverse_ref = Man.reflect_on_association(:interests)
-    assert has_many_with_inverse_ref.respond_to?(:has_inverse?)
+    assert_respond_to has_many_with_inverse_ref, :has_inverse?
     assert has_many_with_inverse_ref.has_inverse?
 
     belongs_to_with_inverse_ref = Face.reflect_on_association(:man)
-    assert belongs_to_with_inverse_ref.respond_to?(:has_inverse?)
+    assert_respond_to belongs_to_with_inverse_ref, :has_inverse?
     assert belongs_to_with_inverse_ref.has_inverse?
 
     has_one_without_inverse_ref = Club.reflect_on_association(:sponsor)
-    assert has_one_without_inverse_ref.respond_to?(:has_inverse?)
+    assert_respond_to has_one_without_inverse_ref, :has_inverse?
     assert !has_one_without_inverse_ref.has_inverse?
 
     has_many_without_inverse_ref = Club.reflect_on_association(:memberships)
-    assert has_many_without_inverse_ref.respond_to?(:has_inverse?)
+    assert_respond_to has_many_without_inverse_ref, :has_inverse?
     assert !has_many_without_inverse_ref.has_inverse?
 
     belongs_to_without_inverse_ref = Sponsor.reflect_on_association(:sponsor_club)
-    assert belongs_to_without_inverse_ref.respond_to?(:has_inverse?)
+    assert_respond_to belongs_to_without_inverse_ref, :has_inverse?
     assert !belongs_to_without_inverse_ref.has_inverse?
   end
 
   def test_should_be_able_to_ask_a_reflection_what_it_is_the_inverse_of
     has_one_ref = Man.reflect_on_association(:face)
-    assert has_one_ref.respond_to?(:inverse_of)
+    assert_respond_to has_one_ref, :inverse_of
 
     has_many_ref = Man.reflect_on_association(:interests)
-    assert has_many_ref.respond_to?(:inverse_of)
+    assert_respond_to has_many_ref, :inverse_of
 
     belongs_to_ref = Face.reflect_on_association(:man)
-    assert belongs_to_ref.respond_to?(:inverse_of)
+    assert_respond_to belongs_to_ref, :inverse_of
   end
 
   def test_inverse_of_method_should_supply_the_actual_reflection_instance_it_is_the_inverse_of
@@ -93,6 +93,7 @@ class InverseHasOneTests < ActiveRecord::TestCase
     f.man.name = 'Mungo'
     assert_equal m.name, f.man.name, "Name of man should be the same after changes to child-owned instance"
   end
+
 
   def test_parent_instance_should_be_shared_with_eager_loaded_child_on_find
     m = Man.find(:first, :conditions => {:name => 'Gordon'}, :include => :face)
@@ -411,7 +412,7 @@ class InverseBelongsToTests < ActiveRecord::TestCase
     i = interests(:trainspotting)
     m = i.man
     assert_not_nil m.interests
-    iz = m.interests.detect {|iz| iz.id == i.id}
+    iz = m.interests.detect { |_iz| _iz.id == i.id}
     assert_not_nil iz
     assert_equal i.topic, iz.topic, "Interest topics should be the same before changes to child"
     i.topic = 'Eating cheese with a spoon'
@@ -515,7 +516,7 @@ class InversePolymorphicBelongsToTests < ActiveRecord::TestCase
     i = interests(:llama_wrangling)
     m = i.polymorphic_man
     assert_not_nil m.polymorphic_interests
-    iz = m.polymorphic_interests.detect {|iz| iz.id == i.id}
+    iz = m.polymorphic_interests.detect { |_iz| _iz.id == i.id}
     assert_not_nil iz
     assert_equal i.topic, iz.topic, "Interest topics should be the same before changes to child"
     i.topic = 'Eating cheese with a spoon'

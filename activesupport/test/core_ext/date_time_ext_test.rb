@@ -1,4 +1,5 @@
 require 'abstract_unit'
+require 'active_support/time'
 
 class DateTimeExtCalculationsTest < Test::Unit::TestCase
   def test_to_s
@@ -25,11 +26,11 @@ class DateTimeExtCalculationsTest < Test::Unit::TestCase
   end
 
   def test_to_date
-    assert_equal Date.new(2005, 2, 21), DateTime.new(2005, 2, 21).to_date
+    assert_equal Date.new(2005, 2, 21), DateTime.new(2005, 2, 21, 14, 30, 0).to_date
   end
 
   def test_to_datetime
-    assert_equal DateTime.new(2005, 2, 21), DateTime.new(2005, 2, 21).to_datetime
+    assert_equal DateTime.new(2005, 2, 21, 14, 30, 0), DateTime.new(2005, 2, 21, 14, 30, 0).to_datetime
   end
 
   def test_to_time
@@ -37,6 +38,11 @@ class DateTimeExtCalculationsTest < Test::Unit::TestCase
     assert_equal Time.utc_time(2039, 2, 21, 10, 11, 12), DateTime.new(2039, 2, 21, 10, 11, 12, 0, 0).to_time
     # DateTimes with offsets other than 0 are returned unaltered
     assert_equal DateTime.new(2005, 2, 21, 10, 11, 12, Rational(-5, 24)), DateTime.new(2005, 2, 21, 10, 11, 12, Rational(-5, 24)).to_time
+  end
+
+  def test_civil_from_format
+    assert_equal DateTime.civil(2010, 5, 4, 0, 0, 0, DateTime.local_offset), DateTime.civil_from_format(:local, 2010, 5, 4)
+    assert_equal DateTime.civil(2010, 5, 4, 0, 0, 0, 0), DateTime.civil_from_format(:utc, 2010, 5, 4)
   end
 
   def test_seconds_since_midnight
@@ -229,7 +235,7 @@ class DateTimeExtCalculationsTest < Test::Unit::TestCase
     assert_equal false,  DateTime.civil(2005,2,10,15,30,45, Rational(-18000, 86400)).past?
     assert_equal false,  DateTime.civil(2005,2,10,15,30,46, Rational(-18000, 86400)).past?
   end
-  
+
   def test_past_without_offset
     DateTime.stubs(:current).returns(DateTime.civil(2005,2,10,15,30,45, Rational(-18000, 86400)))
     assert_equal true,  DateTime.civil(2005,2,10,20,30,44).past?
@@ -269,12 +275,12 @@ class DateTimeExtCalculationsTest < Test::Unit::TestCase
   end
 
   def test_current_without_time_zone
-    assert DateTime.current.is_a?(DateTime)
+    assert_kind_of DateTime, DateTime.current
   end
 
   def test_current_with_time_zone
     with_env_tz 'US/Eastern' do
-      assert DateTime.current.is_a?(DateTime)
+      assert_kind_of DateTime, DateTime.current
     end
   end
 

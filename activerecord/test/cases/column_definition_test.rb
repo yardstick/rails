@@ -67,4 +67,55 @@ class ColumnDefinitionTest < ActiveRecord::TestCase
       assert !text_column.has_default?
     end
   end
+
+  if current_adapter?(:Mysql2Adapter)
+    def test_should_set_default_for_mysql_binary_data_types
+      binary_column = ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", "a", "binary(1)")
+      assert_equal "a", binary_column.default
+
+      varbinary_column = ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", "a", "varbinary(1)")
+      assert_equal "a", varbinary_column.default
+    end
+
+    def test_should_not_set_default_for_blob_and_text_data_types
+      assert_raise ArgumentError do
+        ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", "a", "blob")
+      end
+
+      assert_raise ArgumentError do
+        ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", "Hello", "text")
+      end
+
+      text_column = ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", nil, "text")
+      assert_equal nil, text_column.default
+
+      not_null_text_column = ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", nil, "text", false)
+      assert_equal "", not_null_text_column.default
+    end
+
+    def test_has_default_should_return_false_for_blog_and_test_data_types
+      blob_column = ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", nil, "blob")
+      assert !blob_column.has_default?
+
+      text_column = ActiveRecord::ConnectionAdapters::Mysql2Column.new("title", nil, "text")
+      assert !text_column.has_default?
+    end
+  end
+
+  if current_adapter?(:PostgreSQLAdapter)
+    def test_bigint_column_should_map_to_integer
+      bigint_column = ActiveRecord::ConnectionAdapters::PostgreSQLColumn.new('number', nil, "bigint")
+      assert_equal :integer, bigint_column.type
+    end
+
+    def test_smallint_column_should_map_to_integer
+      smallint_column = ActiveRecord::ConnectionAdapters::PostgreSQLColumn.new('number', nil, "smallint")
+      assert_equal :integer, smallint_column.type
+    end
+
+    def test_uuid_column_should_map_to_string
+      uuid_column = ActiveRecord::ConnectionAdapters::PostgreSQLColumn.new('unique_id', nil, "uuid")
+      assert_equal :string, uuid_column.type
+    end
+  end
 end

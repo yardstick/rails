@@ -1,16 +1,18 @@
 require 'set'
 
-# Adds easy defaults to writing Atom feeds with the Builder template engine (this does not work on ERb or any other
-# template languages).
 module ActionView
+  # = Action View Atom Feed Helpers
   module Helpers #:nodoc:
     module AtomFeedHelper
+      # Adds easy defaults to writing Atom feeds with the Builder template engine (this does not work on ERb or any other
+      # template languages).
+      #
       # Full usage example:
       #
       #   config/routes.rb:
-      #     ActionController::Routing::Routes.draw do |map|
-      #       map.resources :posts
-      #       map.root :controller => "posts"
+      #     Basecamp::Application.routes.draw do
+      #       resources :posts
+      #       root :to => "posts#index"
       #     end
       #
       #   app/controllers/posts_controller.rb:
@@ -114,7 +116,7 @@ module ActionView
         feed_opts.merge!(options).reject!{|k,v| !k.to_s.match(/^xml/)}
 
         xml.feed(feed_opts) do
-          xml.id(options[:id] || "tag:#{request.host},#{options[:schema_date]}:#{request.request_uri.split(".")[0]}")
+          xml.id(options[:id] || "tag:#{request.host},#{options[:schema_date]}:#{request.fullpath.split(".")[0]}")
           xml.link(:rel => 'alternate', :type => 'text/html', :href => options[:root_url] || (request.protocol + request.host_with_port))
           xml.link(:rel => 'self', :type => 'application/atom+xml', :href => options[:url] || request.url)
 

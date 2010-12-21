@@ -32,7 +32,7 @@ Here's a summary of the rack-related changes:
 * +CGI::Session::MemCacheStore+ has been replaced by +ActionController::Session::MemCacheStore+.
 * +CGI::Session::ActiveRecordStore+ has been replaced by +ActiveRecord::SessionStore+.
 * You can still change your session store with +ActionController::Base.session_store = :active_record_store+.
-* Default sessions options are still set with +ActionController::Base.session = { :key => "..." }+.
+* Default sessions options are still set with +ActionController::Base.session = { :key => "..." }+. However, the +:session_domain+ option has been renamed to +:domain+.
 * The mutex that normally wraps your entire request has been moved into middleware, +ActionController::Lock+.
 * +ActionController::AbstractRequest+ and +ActionController::Request+ have been unified. The new +ActionController::Request+ inherits from +Rack::Request+. This affects access to +response.headers['type']+ in test requests. Use +response.content_type+ instead.
 * +ActiveRecord::QueryCache+ middleware is automatically inserted onto the middleware stack if +ActiveRecord+ has been loaded. This middleware sets up and flushes the per-request Active Record query cache.
@@ -47,13 +47,13 @@ After some versions without an upgrade, Rails 2.3 offers some new features for R
 
 h3. Documentation
 
-The "Ruby on Rails guides":http://guides.rubyonrails.org/ project has published several additional guides for Rails 2.3. In addition, a "separate site":http://guides.rails.info/ maintains updated copies of the Guides for Edge Rails. Other documentation efforts include a relaunch of the "Rails wiki":http://newwiki.rubyonrails.org/ and early planning for a Rails Book.
+The "Ruby on Rails guides":http://guides.rubyonrails.org/ project has published several additional guides for Rails 2.3. In addition, a "separate site":http://edgeguides.rubyonrails.org/ maintains updated copies of the Guides for Edge Rails. Other documentation efforts include a relaunch of the "Rails wiki":http://newwiki.rubyonrails.org/ and early planning for a Rails Book.
 
 * More Information: "Rails Documentation Projects":http://weblog.rubyonrails.org/2009/1/15/rails-documentation-projects.
 
 h3. Ruby 1.9.1 Support
 
-Rails 2.3 should pass all of its own tests whether you are running on Ruby 1.8 or the now-released Ruby 1.9.1. You should be aware, though, that moving to 1.9.1 entails checking all of the data adapters, plugins, and other code that you depend on for Ruby 1.9.1 compatibility, as well as Rails core. 
+Rails 2.3 should pass all of its own tests whether you are running on Ruby 1.8 or the now-released Ruby 1.9.1. You should be aware, though, that moving to 1.9.1 entails checking all of the data adapters, plugins, and other code that you depend on for Ruby 1.9.1 compatibility, as well as Rails core.
 
 h3. Active Record
 
@@ -77,11 +77,11 @@ Turning on nested attributes enables a number of things: automatic (and atomic) 
 You can also specify requirements for any new records that are added via nested attributes using the +:reject_if+ option:
 
 <ruby>
-accepts_nested_attributes_for :author, 
+accepts_nested_attributes_for :author,
   :reject_if => proc { |attributes| attributes['name'].blank? }
 </ruby>
 
-* Lead Contributor: "Eloy Duran":http://www.superalloy.nl/blog/
+* Lead Contributor: "Eloy Duran":http://superalloy.nl/
 * More Information: "Nested Model Forms":http://weblog.rubyonrails.org/2009/1/26/nested-model-forms
 
 h4. Nested Transactions
@@ -149,7 +149,7 @@ end
 
 Note that you should only use this method for batch processing: for small numbers of records (less than 1000), you should just use the regular find methods with your own loop.
 
-* More Information (at that point the convenience method was called just +each+): 
+* More Information (at that point the convenience method was called just +each+):
 ** "Rails 2.3: Batch Finding":http://afreshcup.com/2009/02/23/rails-23-batch-finding/
 ** "What's New in Edge Rails: Batched Find":http://ryandaigle.com/articles/2009/2/23/what-s-new-in-edge-rails-batched-find
 
@@ -365,10 +365,10 @@ You can write this view in Rails 2.3:
 <% end %>
 </erb>
 
-* Lead Contributor: "Eloy Duran":http://www.superalloy.nl/blog/
+* Lead Contributor: "Eloy Duran":http://superalloy.nl/
 * More Information:
 ** "Nested Model Forms":http://weblog.rubyonrails.org/2009/1/26/nested-model-forms
-** "complex-form-examples":http://github.com/alloy/complex-form-examples/tree/nested_attributes
+** "complex-form-examples":http://github.com/alloy/complex-form-examples
 ** "What's New in Edge Rails: Nested Object Forms":http://ryandaigle.com/articles/2009/2/1/what-s-new-in-edge-rails-nested-attributes
 
 h4. Smart Rendering of Partials
@@ -449,7 +449,7 @@ returns
 <option>joke</option>
 <option>poem</option>
 <option disabled=“disabled“>private</option>
-</select>	
+</select>
 </ruby>
 
 You can also use an anonymous function to determine at runtime which options from collections will be selected and/or disabled:
@@ -502,7 +502,7 @@ The support for XML parsing in ActiveSupport has been made more flexible by allo
 XmlMini.backend = 'LibXML'
 </ruby>
 
-* Lead Contributor: "Bart ten Brinke":http://www.movesonrails.com/ 
+* Lead Contributor: "Bart ten Brinke":http://www.movesonrails.com/
 * Lead Contributor: "Aaron Patterson":http://tenderlovemaking.com/
 
 h4. Fractional seconds for TimeWithZone
@@ -582,7 +582,7 @@ h4. Other Railties Changes
 * The default +environment.rb+ file has been decluttered.
 * The dbconsole script now lets you use an all-numeric password without crashing.
 * +Rails.root+ now returns a +Pathname+ object, which means you can use it directly with the +join+ method to "clean up existing code":http://afreshcup.com/2008/12/05/a-little-rails_root-tidiness/ that uses +File.join+.
-* Various files in /public that deal with CGI and FCGI dispatching are no longer generated in every Rails application by default (you can still get them if you need them by adding +--with-dispatches+ when you run the +rails+ command, or add them later with +rake rails:generate_dispatchers+).
+* Various files in /public that deal with CGI and FCGI dispatching are no longer generated in every Rails application by default (you can still get them if you need them by adding +--with-dispatchers+ when you run the +rails+ command, or add them later with +rake rails:update:generate_dispatchers+).
 * Rails Guides have been converted from AsciiDoc to Textile markup.
 * Scaffolded views and controllers have been cleaned up a bit.
 * +script/server+ now accepts a <tt>--path</tt> argument to mount a Rails application from a specific path.

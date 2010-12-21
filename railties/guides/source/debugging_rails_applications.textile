@@ -96,23 +96,25 @@ Will be rendered as follows:
 Title: Rails debugging guide
 </pre>
 
-h4. Debugging JavaScript
+h4. Debugging RJS
 
-Rails has built-in support to debug RJS, to active it, set +ActionView::Base.debug_rjs+ to _true_, this will specify whether RJS responses should be wrapped in a try/catch block that alert()s the caught exception (and then re-raises it).
+Rails has optional built-in support to debug RJS. When enabled, responses are wrapped in a try/catch block that displays the caught exception using +alert()+, and then re-raises it.
 
-To enable it, add the following in the +Rails::Initializer do |config|+ block inside +environment.rb+:
+The flag to enable RJS debugging in your configuration files is +config.action_view.debug_rjs+:
 
 <ruby>
-config.action_view[:debug_rjs] = true
+config.action_view.debug_rjs = true
 </ruby>
 
-Or, at any time, setting +ActionView::Base.debug_rjs+ to _true_:
+or at any time setting +ActionView::Base.debug_rjs+:
 
 <ruby>
 ActionView::Base.debug_rjs = true
 </ruby>
 
-TIP: For more information on debugging javascript refer to "Firebug":http://getfirebug.com/, the popular debugger for Firefox.
+It is enabled by default in development mode, and disabled in the rest.
+
+TIP: For more information on debugging JavaScript, refer to "Firebug":http://getfirebug.com/, the popular debugger for Firefox.
 
 h3. The Logger
 
@@ -125,8 +127,8 @@ Rails makes use of Ruby's standard +logger+ to write log information. You can al
 You can specify an alternative logger in your +environment.rb+ or any environment file:
 
 <ruby>
-ActiveRecord::Base.logger = Logger.new(STDOUT)
-ActiveRecord::Base.logger = Log4r::Logger.new("Application Log")
+Rails.logger = Logger.new(STDOUT)
+Rails.logger = Log4r::Logger.new("Application Log")
 </ruby>
 
 Or in the +Initializer+ section, add _any_ of the following
@@ -136,17 +138,17 @@ config.logger = Logger.new(STDOUT)
 config.logger = Log4r::Logger.new("Application Log")
 </ruby>
 
-TIP: By default, each log is created under +RAILS_ROOT/log/+ and the log file name is +environment_name.log+.
+TIP: By default, each log is created under +Rails.root/log/+ and the log file name is +environment_name.log+.
 
 h4. Log Levels
 
-When something is logged it's printed into the corresponding log if the log level of the message is equal or higher than the configured log level. If you want to know the current log level you can call the +ActiveRecord::Base.logger.level+ method.
+When something is logged it's printed into the corresponding log if the log level of the message is equal or higher than the configured log level. If you want to know the current log level you can call the +Rails.logger.level+ method.
 
 The available log levels are: +:debug+, +:info+, +:warn+, +:error+, and +:fatal+, corresponding to the log level numbers from 0 up to 4 respectively. To change the default log level, use
 
 <ruby>
 config.log_level = Logger::WARN # In any environment initializer, or
-ActiveRecord::Base.logger.level = 0 # at any time
+Rails.logger.level = 0 # at any time
 </ruby>
 
 This is useful when you want to log under development or staging, but you don't want to flood your production log with unnecessary information.
@@ -223,6 +225,8 @@ The debugger used by Rails, +ruby-debug+, comes as a gem. To install it, just ru
 $ sudo gem install ruby-debug
 </shell>
 
+TIP: If you are using Ruby 1.9, you can install a compatible version of +ruby-debug+ by running +sudo gem install ruby-debug19+
+
 In case you want to download a particular version or get the source code, refer to the "project's page on rubyforge":http://rubyforge.org/projects/ruby-debug/.
 
 Rails has had built-in support for ruby-debug since Rails 2.0. Inside any Rails application you can invoke the debugger by calling the +debugger+ method.
@@ -247,9 +251,9 @@ If you see the message in the console or logs:
 Make sure you have started your web server with the option +--debugger+:
 
 <shell>
-~/PathTo/rails_project$ script/server --debugger
-=> Booting Mongrel (use 'script/server webrick' to force WEBrick)
-=> Rails 2.2.0 application starting on http://0.0.0.0:3000
+~/PathTo/rails_project$ rails server --debugger
+=> Booting Mongrel (use 'rails server webrick' to force WEBrick)
+=> Rails 3.0.0 application starting on http://0.0.0.0:3000
 => Debugger enabled
 ...
 </shell>
@@ -286,7 +290,7 @@ condition  down     finish  list    ps    save     thread  var
 continue   edit     frame   method  putl  set      tmate   where
 </shell>
 
-TIP: To view the help menu for any command use +help <command-name>+ in active debug mode. For example: _+help var+_
+TIP: To view the help menu for any command use +help &lt;command-name&gt;+ in active debug mode. For example: _+help var+_
 
 The next command to learn is one of the most useful: +list+. You can also abbreviate ruby-debug commands by supplying just enough letters to distinguish them from other commands, so you can also use +l+ for the +list+ command.
 
@@ -330,7 +334,7 @@ h4. The Context
 
 When you start debugging your application, you will be placed in different contexts as you go through the different parts of the stack.
 
-ruby-debug creates a content when a stopping point or an event is reached. The context has information about the suspended program which enables a debugger to inspect the frame stack, evaluate variables from the perspective of the debugged program, and contains information about the place where the debugged program is stopped.
+ruby-debug creates a context when a stopping point or an event is reached. The context has information about the suspended program which enables a debugger to inspect the frame stack, evaluate variables from the perspective of the debugged program, and contains information about the place where the debugged program is stopped.
 
 At any time you can call the +backtrace+ command (or its alias +where+) to print the backtrace of the application. This can be very helpful to know how you got where you are. If you ever wondered about how you got somewhere in your code, then +backtrace+ will supply the answer.
 
@@ -401,7 +405,7 @@ And then ask again for the instance_variables:
 true
 </shell>
 
-Now +@posts+ is a included in the instance variables, because the line defining it was executed.
+Now +@posts+ is included in the instance variables, because the line defining it was executed.
 
 TIP: You can also step into *irb* mode with the command +irb+ (of course!). This way an irb session will be started within the context you invoked it. But be warned: this is an experimental feature.
 
@@ -472,10 +476,10 @@ class Author < ActiveRecord::Base
 end
 </ruby>
 
-TIP: You can use ruby-debug while using script/console. Just remember to +require "ruby-debug"+ before calling the +debugger+ method.
+TIP: You can use ruby-debug while using +rails console+. Just remember to +require "ruby-debug"+ before calling the +debugger+ method.
 
 <shell>
-/PathTo/project $ script/console
+/PathTo/project $ rails console
 Loading development environment (Rails 2.1.0)
 >> require "ruby-debug"
 => []
@@ -636,7 +640,7 @@ require 'bleak_house' if ENV['BLEAK_HOUSE']
 Start a server instance with BleakHouse integration:
 
 <shell>
-RAILS_ENV=production BLEAK_HOUSE=1 ruby-bleak-house ./script/server
+RAILS_ENV=production BLEAK_HOUSE=1 ruby-bleak-house rails server
 </shell>
 
 Make sure to run a couple hundred requests to get better data samples, then press +CTRL-C+. The server will stop and Bleak House will produce a dumpfile in +/tmp+:
@@ -680,7 +684,7 @@ h3. Plugins for Debugging
 
 There are some Rails plugins to help you to find errors and debug your application. Here is a list of useful plugins for debugging:
 
-* "Footnotes":http://github.com/drnic/rails-footnotes/tree/master: Every Rails page has footnotes that give request information and link back to your source via TextMate.
+* "Footnotes":http://github.com/josevalim/rails-footnotes: Every Rails page has footnotes that give request information and link back to your source via TextMate.
 * "Query Trace":http://github.com/ntalbott/query_trace/tree/master: Adds query origin tracing to your logs.
 * "Query Stats":http://github.com/dan-manges/query_stats/tree/master: A Rails plugin to track database queries.
 * "Query Reviewer":http://code.google.com/p/query-reviewer/: This rails plugin not only runs "EXPLAIN" before each of your select queries in development, but provides a small DIV in the rendered output of each page with the summary of warnings for each query that it analyzed.
@@ -702,8 +706,7 @@ h3. References
 
 h3. Changelog
 
-"Lighthouse ticket":http://rails.lighthouseapp.com/projects/16213-rails-guides/tickets/5
-
+* April 4, 2010: Fixed document to validate XHTML 1.0 Strict. "Jaime Iniesta":http://jaimeiniesta.com
 * November 3, 2008: Accepted for publication. Added RJS, memory leaks and plugins chapters by "Emilio Tagua":credits.html#miloops
 * October 19, 2008: Copy editing pass by "Mike Gunderloy":credits.html#mgunderloy
 * September 16, 2008: initial version by "Emilio Tagua":credits.html#miloops

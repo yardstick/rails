@@ -2,9 +2,6 @@ require "cases/helper"
 require 'models/company'
 require 'models/topic'
 require 'models/edge'
-require 'models/owner'
-require 'models/pet'
-require 'models/toy'
 require 'models/club'
 require 'models/organization'
 
@@ -15,7 +12,7 @@ class NumericData < ActiveRecord::Base
 end
 
 class CalculationsTest < ActiveRecord::TestCase
-  fixtures :companies, :accounts, :topics, :owners, :pets, :toys
+  fixtures :companies, :accounts, :topics
 
   def test_should_sum_field
     assert_equal 318, Account.sum(:credit_limit)
@@ -29,10 +26,10 @@ class CalculationsTest < ActiveRecord::TestCase
   def test_should_return_nil_as_average
     assert_nil NumericData.average(:bank_balance)
   end
-  
+
   def test_type_cast_calculated_value_should_convert_db_averages_of_fixnum_class_to_decimal
-    assert_equal 0, NumericData.send(:type_cast_calculated_value, 0, nil, 'avg')
-    assert_equal 53.0, NumericData.send(:type_cast_calculated_value, 53, nil, 'avg')
+    assert_equal 0, NumericData.scoped.send(:type_cast_calculated_value, 0, nil, 'avg')
+    assert_equal 53.0, NumericData.scoped.send(:type_cast_calculated_value, 53, nil, 'avg')
   end
 
   def test_should_get_maximum_of_field
@@ -40,12 +37,12 @@ class CalculationsTest < ActiveRecord::TestCase
   end
 
   def test_should_get_maximum_of_field_with_include
-    assert_equal 50, Account.maximum(:credit_limit, :include => :firm, :conditions => "companies.name != 'Summit'")
+    assert_equal 55, Account.maximum(:credit_limit, :include => :firm, :conditions => "companies.name != 'Summit'")
   end
 
   def test_should_get_maximum_of_field_with_scoped_include
-    Account.with_scope :find => { :include => :firm, :conditions => "companies.name != 'Summit'" } do
-      assert_equal 50, Account.maximum(:credit_limit)
+    Account.send :with_scope, :find => { :include => :firm, :conditions => "companies.name != 'Summit'" } do
+      assert_equal 55, Account.maximum(:credit_limit)
     end
   end
 
@@ -57,15 +54,15 @@ class CalculationsTest < ActiveRecord::TestCase
     c = Account.sum(:credit_limit, :group => :firm_id)
     [1,6,2].each { |firm_id| assert c.keys.include?(firm_id) }
   end
-
+  
   def test_should_group_by_multiple_fields
     c = Account.count(:all, :group => ['firm_id', :credit_limit])
     [ [nil, 50], [1, 50], [6, 50], [6, 55], [9, 53], [2, 60] ].each { |firm_and_limit| assert c.keys.include?(firm_and_limit) }
   end
 
   def test_should_group_by_multiple_fields_having_functions
-    c = Topic.count(:all, :group => [:author_name, 'COALESCE(type, title)'])
-    assert_equal 1, c[["Nick", "The Third Topic of the day"]]
+    c = Topic.group(:author_name, 'COALESCE(type, title)').count(:all)
+    assert_equal 1, c[["Carl", "The Third Topic of the day"]]
     assert_equal 1, c[["Mary", "Reply"]]
     assert_equal 1, c[["David", "The First Topic"]]
     assert_equal 1, c[["Carl", "Reply"]]
@@ -220,7 +217,7 @@ class CalculationsTest < ActiveRecord::TestCase
     c = Company.count(:all, :group => "UPPER(#{QUOTED_TYPE})")
     assert_equal 2, c[nil]
     assert_equal 1, c['DEPENDENTFIRM']
-    assert_equal 3, c['CLIENT']
+    assert_equal 4, c['CLIENT']
     assert_equal 2, c['FIRM']
   end
 
@@ -228,7 +225,7 @@ class CalculationsTest < ActiveRecord::TestCase
     c = Company.count(:all, :group => "UPPER(companies.#{QUOTED_TYPE})")
     assert_equal 2, c[nil]
     assert_equal 1, c['DEPENDENTFIRM']
-    assert_equal 3, c['CLIENT']
+    assert_equal 4, c['CLIENT']
     assert_equal 2, c['FIRM']
   end
 
@@ -254,35 +251,29 @@ class CalculationsTest < ActiveRecord::TestCase
     assert_equal 8, c['Jadedpixel']
   end
 
-  def test_should_group_by_summed_field_with_conditions_and_having
+  def test_should_group_by_summed_field_through_association_and_having
     c = companies(:rails_core).companies.sum(:id, :group => :name,
                                                   :having => 'sum(id) > 7')
     assert_nil      c['Leetsoft']
     assert_equal 8, c['Jadedpixel']
   end
 
-  def test_should_reject_invalid_options
-    assert_nothing_raised do
-      [:count, :sum].each do |func|
-        # empty options are valid
-        Company.send(:validate_calculation_options, func)
-        # these options are valid for all calculations
-        [:select, :conditions, :joins, :order, :group, :having, :distinct].each do |opt|
-          Company.send(:validate_calculation_options, func, opt => true)
-        end
-      end
-
-      # :include is only valid on :count
-      Company.send(:validate_calculation_options, :count, :include => true)
-    end
-
-    assert_raise(ArgumentError) { Company.send(:validate_calculation_options, :sum,   :foo => :bar) }
-    assert_raise(ArgumentError) { Company.send(:validate_calculation_options, :count, :foo => :bar) }
-  end
-
   def test_should_count_selected_field_with_include
     assert_equal 6, Account.count(:distinct => true, :include => :firm)
     assert_equal 4, Account.count(:distinct => true, :include => :firm, :select => :credit_limit)
+  end
+
+  def test_should_count_scoped_select
+    Account.update_all("credit_limit = NULL")
+    assert_equal 0, Account.scoped(:select => "credit_limit").count
+  end
+
+  def test_should_count_scoped_select_with_options
+    Account.update_all("credit_limit = NULL")
+    Account.last.update_attribute('credit_limit', 49)
+    Account.first.update_attribute('credit_limit', 51)
+
+    assert_equal 1, Account.scoped(:select => "credit_limit").count(:conditions => ['credit_limit >= 50'])
   end
 
   def test_should_count_manual_select_with_include
@@ -294,7 +285,18 @@ class CalculationsTest < ActiveRecord::TestCase
   end
 
   def test_count_with_column_and_options_parameter
-    assert_equal 2, Account.count(:firm_id, :conditions => "credit_limit = 50")
+    assert_equal 2, Account.count(:firm_id, :conditions => "credit_limit = 50 AND firm_id IS NOT NULL")
+  end
+
+  def test_should_count_field_in_joined_table
+    assert_equal 5, Account.count('companies.id', :joins => :firm)
+    assert_equal 4, Account.count('companies.id', :joins => :firm, :distinct => true)
+  end
+
+  def test_should_count_field_in_joined_table_with_group_by
+    c = Account.count('companies.id', :group => 'accounts.firm_id', :joins => :firm)
+
+    [1,6,2,9].each { |firm_id| assert c.keys.include?(firm_id) }
   end
 
   def test_count_with_no_parameters_isnt_deprecated
@@ -305,12 +307,13 @@ class CalculationsTest < ActiveRecord::TestCase
     assert_raise(ArgumentError) { Account.count(1, 2, 3) }
   end
 
-  def test_count_with_scoped_has_many_through_association
-    assert_equal 1, owners(:blackbeard).toys.with_name('Bone').count
-  end
-
   def test_should_sum_expression
-    assert_equal 636, Account.sum("2 * credit_limit").to_i
+    # Oracle adapter returns floating point value 636.0 after SUM
+    if current_adapter?(:OracleAdapter)
+      assert_equal 636, Account.sum("2 * credit_limit")
+    else
+      assert_equal 636, Account.sum("2 * credit_limit").to_i
+    end
   end
 
   def test_count_with_from_option
@@ -346,7 +349,7 @@ class CalculationsTest < ActiveRecord::TestCase
   end
 
   def test_from_option_with_specified_index
-    if Edge.connection.adapter_name == 'MySQL'
+    if Edge.connection.adapter_name == 'MySQL' or Edge.connection.adapter_name == 'Mysql2'
       assert_equal Edge.count(:all), Edge.count(:all, :from => 'edges USE INDEX(unique_edge_index)')
       assert_equal Edge.count(:all, :conditions => 'sink_id < 5'),
           Edge.count(:all, :from => 'edges USE INDEX(unique_edge_index)', :conditions => 'sink_id < 5')
@@ -357,4 +360,12 @@ class CalculationsTest < ActiveRecord::TestCase
     assert_equal Account.count(:all), Company.count(:all, :from => 'accounts')
   end
 
+  def test_distinct_is_honored_when_used_with_count_operation_after_group
+    # Count the number of authors for approved topics
+    approved_topics_count = Topic.group(:approved).count(:author_name)[true]
+    assert_equal approved_topics_count, 3
+    # Count the number of distinct authors for approved Topics
+    distinct_authors_for_approved_count = Topic.group(:approved).count(:author_name, :distinct => true)[true]
+    assert_equal distinct_authors_for_approved_count, 2
+  end
 end

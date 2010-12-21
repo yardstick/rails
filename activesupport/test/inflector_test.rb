@@ -1,4 +1,6 @@
 require 'abstract_unit'
+require 'active_support/inflector'
+
 require 'inflector_test_cases'
 
 module Ace
@@ -200,15 +202,21 @@ class InflectorTest < Test::Unit::TestCase
     end
   end
 
+  def test_symbol_to_lower_camel
+    SymbolToLowerCamel.each do |symbol, lower_camel|
+      assert_equal(lower_camel, ActiveSupport::Inflector.camelize(symbol, false))
+    end
+  end
+
   %w{plurals singulars uncountables humans}.each do |inflection_type|
-    class_eval "
+    class_eval <<-RUBY, __FILE__, __LINE__ + 1
       def test_clear_#{inflection_type}
         cached_values = ActiveSupport::Inflector.inflections.#{inflection_type}
         ActiveSupport::Inflector.inflections.clear :#{inflection_type}
         assert ActiveSupport::Inflector.inflections.#{inflection_type}.empty?, \"#{inflection_type} inflections should be empty after clear :#{inflection_type}\"
         ActiveSupport::Inflector.inflections.instance_variable_set :@#{inflection_type}, cached_values
       end
-    "
+    RUBY
   end
 
   def test_clear_all
@@ -244,6 +252,16 @@ class InflectorTest < Test::Unit::TestCase
         inflect.irregular(singular, plural)
         assert_equal singular, ActiveSupport::Inflector.singularize(plural)
         assert_equal plural, ActiveSupport::Inflector.pluralize(singular)
+      end
+    end
+  end
+
+  Irregularities.each do |irregularity|
+    singular, plural = *irregularity
+    ActiveSupport::Inflector.inflections do |inflect|
+      define_method("test_pluralize_of_irregularity_#{plural}_should_be_the_same") do
+        inflect.irregular(singular, plural)
+        assert_equal plural, ActiveSupport::Inflector.pluralize(plural)
       end
     end
   end

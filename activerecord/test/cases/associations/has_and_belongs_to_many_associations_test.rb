@@ -2,20 +2,14 @@ require "cases/helper"
 require 'models/developer'
 require 'models/project'
 require 'models/company'
-require 'models/topic'
-require 'models/reply'
-require 'models/computer'
 require 'models/customer'
 require 'models/order'
 require 'models/categorization'
 require 'models/category'
 require 'models/post'
 require 'models/author'
-require 'models/comment'
 require 'models/tag'
 require 'models/tagging'
-require 'models/person'
-require 'models/reader'
 require 'models/parrot'
 require 'models/pirate'
 require 'models/treasure'
@@ -24,6 +18,9 @@ require 'models/club'
 require 'models/member'
 require 'models/membership'
 require 'models/sponsor'
+require 'models/country'
+require 'models/treaty'
+require 'active_support/core_ext/string/conversions'
 
 class ProjectWithAfterCreateHook < ActiveRecord::Base
   set_table_name 'projects'
@@ -81,6 +78,60 @@ end
 class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   fixtures :accounts, :companies, :categories, :posts, :categories_posts, :developers, :projects, :developers_projects,
            :parrots, :pirates, :treasures, :price_estimates, :tags, :taggings
+
+  def setup_data_for_habtm_case
+    ActiveRecord::Base.connection.execute('delete from countries_treaties')
+
+    country = Country.new(:name => 'India')
+    country.country_id = 'c1'
+    country.save!
+
+    treaty = Treaty.new(:name => 'peace')
+    treaty.treaty_id = 't1'
+    country.treaties << treaty
+  end
+
+  def test_should_property_quote_string_primary_keys
+    setup_data_for_habtm_case
+
+    con = ActiveRecord::Base.connection
+    sql = 'select * from countries_treaties'
+    record = con.select_rows(sql).last
+    assert_equal 'c1', record[0]
+    assert_equal 't1', record[1]
+  end
+
+  def test_should_record_timestamp_for_join_table
+    setup_data_for_habtm_case
+
+    con = ActiveRecord::Base.connection
+    sql = 'select * from countries_treaties'
+    record = con.select_rows(sql).last
+    assert_not_nil record[2]
+    assert_not_nil record[3]
+    if current_adapter?(:Mysql2Adapter, :OracleAdapter)
+      assert_match %r{\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}}, record[2].to_s(:db)
+      assert_match %r{\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}}, record[3].to_s(:db)
+    else
+      assert_match %r{\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}}, record[2]
+      assert_match %r{\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}}, record[3]
+    end
+  end
+
+  def test_should_record_timestamp_for_join_table_only_if_timestamp_should_be_recorded
+    begin
+      Treaty.record_timestamps = false
+      setup_data_for_habtm_case
+
+      con = ActiveRecord::Base.connection
+      sql = 'select * from countries_treaties'
+      record = con.select_rows(sql).last
+      assert_nil record[2]
+      assert_nil record[3]
+    ensure
+      Treaty.record_timestamps = true
+    end
+  end
 
   def test_has_and_belongs_to_many
     david = Developer.find(1)
@@ -283,12 +334,14 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_creation_respects_hash_condition
-    post = categories(:general).post_with_conditions.build(:body => '')
+    # in Oracle '' is saved as null therefore need to save ' ' in not null column
+    post = categories(:general).post_with_conditions.build(:body => ' ')
 
     assert        post.save
     assert_equal  'Yet Another Testing Title', post.title
 
-    another_post = categories(:general).post_with_conditions.create(:body => '')
+    # in Oracle '' is saved as null therefore need to save ' ' in not null column
+    another_post = categories(:general).post_with_conditions.create(:body => ' ')
 
     assert        !another_post.new_record?
     assert_equal  'Yet Another Testing Title', another_post.title
@@ -372,7 +425,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   def test_removing_associations_on_destroy
     david = DeveloperWithBeforeDestroyRaise.find(1)
     assert !david.projects.empty?
-    assert_nothing_raised { david.destroy }
+    assert_raise(RuntimeError) { david.destroy }
     assert david.projects.empty?
     assert DeveloperWithBeforeDestroyRaise.connection.select_all("SELECT * FROM developers_projects WHERE developer_id = 1").empty?
   end
@@ -514,16 +567,6 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal high_id_jamis, projects(:active_record).developers.find_by_name('Jamis')
   end
 
-  def test_dynamic_find_order_should_override_association_order
-    # Developers are ordered 'name DESC, id DESC'
-    low_id_jamis = developers(:jamis)
-    middle_id_jamis = developers(:poor_jamis)
-    high_id_jamis = projects(:active_record).developers.create(:name => 'Jamis')
-
-    assert_equal low_id_jamis, projects(:active_record).developers.find(:first, :conditions => "name = 'Jamis'", :order => 'id')
-    assert_equal low_id_jamis, projects(:active_record).developers.find_by_name('Jamis', :order => 'id')
-  end
-
   def test_dynamic_find_all_should_respect_association_order
     # Developers are ordered 'name DESC, id DESC'
     low_id_jamis = developers(:jamis)
@@ -534,14 +577,9 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal [high_id_jamis, middle_id_jamis, low_id_jamis], projects(:active_record).developers.find_all_by_name('Jamis')
   end
 
-  def test_dynamic_find_all_order_should_override_association_order
-    # Developers are ordered 'name DESC, id DESC'
-    low_id_jamis = developers(:jamis)
-    middle_id_jamis = developers(:poor_jamis)
-    high_id_jamis = projects(:active_record).developers.create(:name => 'Jamis')
-
-    assert_equal [low_id_jamis, middle_id_jamis, high_id_jamis], projects(:active_record).developers.find(:all, :conditions => "name = 'Jamis'", :order => 'id')
-    assert_equal [low_id_jamis, middle_id_jamis, high_id_jamis], projects(:active_record).developers.find_all_by_name('Jamis', :order => 'id')
+  def test_find_should_append_to_association_order
+    ordered_developers = projects(:active_record).developers.order('projects.id')
+    assert_equal ['developers.name desc, developers.id desc', 'projects.id'], ordered_developers.order_values
   end
 
   def test_dynamic_find_all_should_respect_association_limit
@@ -572,11 +610,10 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_find_in_association_with_options
-    developers = projects(:active_record).developers.find(:all)
+    developers = projects(:active_record).developers.all
     assert_equal 3, developers.size
 
-    assert_equal developers(:poor_jamis), projects(:active_record).developers.find(:first, :conditions => "salary < 10000")
-    assert_equal developers(:jamis),      projects(:active_record).developers.find(:first, :order => "salary DESC")
+    assert_equal developers(:poor_jamis), projects(:active_record).developers.where("salary < 10000").first
   end
 
   def test_replace_with_less
@@ -681,8 +718,8 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_find_scoped_grouped
-    assert_equal 4, categories(:general).posts_gruoped_by_title.size
-    assert_equal 1, categories(:technology).posts_gruoped_by_title.size
+    assert_equal 4, categories(:general).posts_grouped_by_title.size
+    assert_equal 1, categories(:technology).posts_grouped_by_title.size
   end
 
   def test_find_scoped_grouped_having
@@ -729,21 +766,6 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal [projects(:active_record), projects(:action_controller)].map(&:id).sort, developer.project_ids.sort
   end
 
-  def test_select_limited_ids_list
-    # Set timestamps
-    Developer.transaction do
-      Developer.find(:all, :order => 'id').each_with_index do |record, i|
-        record.update_attributes(:created_at => 5.years.ago + (i * 5.minutes))
-      end
-    end
-
-    join_base = ActiveRecord::Associations::ClassMethods::JoinDependency::JoinBase.new(Project)
-    join_dep  = ActiveRecord::Associations::ClassMethods::JoinDependency.new(join_base, :developers, nil)
-    projects  = Project.send(:select_limited_ids_list, {:order => 'developers.created_at'}, join_dep)
-    assert !projects.include?("'"), projects
-    assert_equal %w(1 2), projects.scan(/\d/).sort
-  end
-
   def test_scoped_find_on_through_association_doesnt_return_read_only_records
     tag = Post.find(1).tags.find_by_name("General")
 
@@ -767,7 +789,7 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal developer, project.developers.find(:first)
     assert_equal project, developer.projects.find(:first)
   end
-  
+
   def test_self_referential_habtm_without_foreign_key_set_should_raise_exception
     assert_raise(ActiveRecord::HasAndBelongsToManyAssociationForeignKeyNeeded) {
       Member.class_eval do
@@ -802,6 +824,13 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal 1, developer.projects.count
   end
 
+  unless current_adapter?(:PostgreSQLAdapter)
+    def test_count_with_finder_sql
+      assert_equal 3, projects(:active_record).developers_with_finder_sql.count
+      assert_equal 3, projects(:active_record).developers_with_multiline_finder_sql.count
+    end
+  end
+
   def test_association_proxy_transaction_method_starts_transaction_in_association_class
     Post.expects(:transaction)
     Category.find(:first).posts.transaction do
@@ -817,6 +846,17 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     # and again to verify that reset_column_information clears the cache correctly
     david.projects.reset_column_information
     assert_queries(0) { david.projects.columns; david.projects.columns }
+  end
+
+  def test_attributes_are_being_set_when_initialized_from_habm_association_with_where_clause
+    new_developer = projects(:action_controller).developers.where(:name => "Marcelo").build
+    assert_equal new_developer.name, "Marcelo"
+  end
+
+  def test_attributes_are_being_set_when_initialized_from_habm_association_with_multiple_where_clauses
+    new_developer = projects(:action_controller).developers.where(:name => "Marcelo").where(:salary => 90_000).build
+    assert_equal new_developer.name, "Marcelo"
+    assert_equal new_developer.salary, 90_000
   end
 
   def test_include_method_in_has_and_belongs_to_many_association_should_return_true_for_instance_added_with_build
