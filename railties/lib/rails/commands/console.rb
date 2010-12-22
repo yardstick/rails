@@ -25,6 +25,9 @@ module Rails
 
       @app.load_console(options[:sandbox])
 
+      # GITHUB: allow loading of Rails.root.join('config/console.rb') if it exists
+      require Rails.root.join('config/console') if File.exist?(Rails.root.join('config/console.rb'))
+
       if options[:debugger]
         begin
           require 'ruby-debug'
