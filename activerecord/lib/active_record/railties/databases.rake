@@ -119,6 +119,9 @@ namespace :db do
 
   desc 'Drops the database for the current Rails.env (use db:drop:all to drop all databases)'
   task :drop => :load_config do
+    # GITHUB
+    fail "refusing to drop DB in production environment" if RAILS_ENV == 'production'
+
     config = ActiveRecord::Base.configurations[Rails.env || 'development']
     begin
       drop_database(config)
@@ -284,6 +287,9 @@ namespace :db do
   namespace :fixtures do
     desc "Load fixtures into the current environment's database.  Load specific fixtures using FIXTURES=x,y. Load from subdirectory in test/fixtures using FIXTURES_DIR=z. Specify an alternative path (eg. spec/fixtures) using FIXTURES_PATH=spec/fixtures."
     task :load => :environment do
+      # GITHUB
+      fail "refusing to load schema in production environment" if RAILS_ENV == 'production'
+
       require 'active_record/fixtures'
 
       ActiveRecord::Base.establish_connection(Rails.env)
