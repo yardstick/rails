@@ -490,7 +490,7 @@ module ActionView
         string = ''
 
         if encode == "javascript"
-          # closes XSS hole
+          # GITHUB: closes XSS hole
           html = content_tag("a", name || email_address_obfuscated.html_safe, html_options.merge("href" => "mailto:#{email_address}#{extras}".html_safe))
           html = escape_javascript(html)
 
