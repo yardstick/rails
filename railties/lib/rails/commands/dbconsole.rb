@@ -31,6 +31,12 @@ module Rails
           options['header'] = h
         end
 
+        # GITHUB: allow dbconsole to execute a query passed via the cmdline
+        @execute_query = nil
+        opt.on("-e", "--execute QUERY", "Execute QUERY and exit instead of loading interactive console") do |query|
+          @execute_query = query
+        end
+
         opt.parse!(ARGV)
         abort opt.to_s unless (0..1).include?(ARGV.size)
       end
@@ -71,6 +77,12 @@ module Rails
         end
 
         args << config['database']
+
+        # GITHUB
+        if @execute_query
+          args << "--execute"
+          args << @execute_query
+        end
 
         exec(find_cmd('mysql', 'mysql5'), *args)
 
