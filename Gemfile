@@ -4,8 +4,8 @@ gemspec
 
 gem "rake",  ">= 0.8.7"
 gem "mocha", ">= 0.9.8"
-gem "rdoc",  ">= 2.5.10"
-gem "horo",  ">= 1.0.2"
+gem "rdoc",  "~> 3.4"
+gem "horo",  "= 1.0.3"
 
 # for perf tests
 gem "faker"
@@ -35,7 +35,7 @@ platforms :ruby do
   gem "nokogiri", ">= 1.4.4"
 
   # AR
-  gem "sqlite3-ruby", "~> 1.3.1", :require => 'sqlite3'
+  gem "sqlite3", "~> 1.3.3"
 
   group :db do
     gem "pg", ">= 0.9.0"

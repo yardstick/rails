@@ -340,9 +340,8 @@ module ActiveRecord
           klass = klass_name.constantize
 
           table_name = klass.quoted_table_name
-          primary_key = reflection.options[:primary_key] || klass.primary_key
+          primary_key = (reflection.options[:primary_key] || klass.primary_key).to_s
           column_type = klass.columns.detect{|c| c.name == primary_key}.type
-
           ids = id_map.keys.map do |id|
             if column_type == :integer
               id.to_i
