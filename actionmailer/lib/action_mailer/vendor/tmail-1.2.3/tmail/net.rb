@@ -78,7 +78,7 @@ module TMail
     end
 
     def add_message_id( fqdn = nil )
-      self.message_id = ::TMail::new_message_id(fqdn)
+      self.message_id ||= ::TMail::new_message_id(fqdn)
     end
 
     def add_date
