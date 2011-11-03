@@ -272,6 +272,10 @@ module ActionController #:nodoc:
     @@asset_host = ""
     cattr_accessor :asset_host
 
+    # Backport asset_path attribute
+    @@asset_path = Proc.new { |source| source }
+    cattr_accessor :asset_path
+
     # All requests are considered local by default, so everyone will be exposed to detailed debugging screens on errors.
     # When the application is ready to go public, this should be set to false, and the protected method <tt>local_request?</tt>
     # should instead be implemented in the controller to determine when debugging screens should be shown.
