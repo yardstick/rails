@@ -6,6 +6,12 @@ require 'inflector_test_cases'
 class StringInflectionsTest < Test::Unit::TestCase
   include InflectorTestCases
 
+  def test_erb_escape
+    string = [192, 60].pack('CC')
+    expected = 192.chr + "&lt;"
+    assert_equal expected, ERB::Util.html_escape(string)
+  end
+
   def test_pluralize
     SingularToPlural.each do |singular, plural|
       assert_equal(plural, singular.pluralize)
@@ -94,13 +100,13 @@ class StringInflectionsTest < Test::Unit::TestCase
     assert_equal DateTime.civil(2039, 2, 27, 23, 50), "2039-02-27 23:50".to_time
     assert_equal Time.local_time(2039, 2, 27, 23, 50), "2039-02-27 23:50".to_time(:local)
   end
-  
+
   def test_string_to_datetime
     assert_equal DateTime.civil(2039, 2, 27, 23, 50), "2039-02-27 23:50".to_datetime
     assert_equal 0, "2039-02-27 23:50".to_datetime.offset # use UTC offset
     assert_equal ::Date::ITALY, "2039-02-27 23:50".to_datetime.start # use Ruby's default start value
   end
-  
+
   def test_string_to_date
     assert_equal Date.new(2005, 2, 27), "2005-02-27".to_date
   end

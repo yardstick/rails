@@ -15,7 +15,7 @@ class ERB
     #   puts html_escape("is a > 0 & a < 10?")
     #   # => is a &gt; 0 &amp; a &lt; 10?
     def html_escape(s)
-      s.to_s.gsub(/[&"><]/) { |special| HTML_ESCAPE[special] }
+      s.to_s.gsub(/&/, "&amp;").gsub(/\"/, "&quot;").gsub(/>/, "&gt;").gsub(/</, "&lt;")
     end
 
     # A utility method for escaping HTML entities in JSON strings.
