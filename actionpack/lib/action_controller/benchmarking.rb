@@ -44,7 +44,7 @@ module ActionController #:nodoc:
       def render_with_benchmark(options = nil, extra_options = {}, &block)
         if logger
           if Object.const_defined?("ActiveRecord") && ActiveRecord::Base.connected?
-            db_runtime = ActiveRecord::Base.connection.reset_runtime
+            db_runtime = ActiveRecord::Base.connection.reset_runtime rescue nil
           end
 
           render_output = nil
@@ -52,8 +52,9 @@ module ActionController #:nodoc:
 
           if Object.const_defined?("ActiveRecord") && ActiveRecord::Base.connected?
             @db_rt_before_render = db_runtime
-            @db_rt_after_render = ActiveRecord::Base.connection.reset_runtime
-            @view_runtime -= @db_rt_after_render
+            if @db_rt_after_render = ActiveRecord::Base.connection.reset_runtime rescue nil
+              @view_runtime -= @db_rt_after_render
+            end
           end
 
           render_output
