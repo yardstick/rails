@@ -54,13 +54,24 @@ module ActionController
       end
 
       # If the block raises, send status code as a last-ditch response.
-      def failsafe_response(fallback_output, status, originating_exception = nil)
+      # !!! hacked because script/unicorn_dev seems to send its own 500 response regardless of what we do here.
+      def failsafe_response(fallback_output, status, originating_exception = nil, request = nil, response = nil)
         yield
       rescue Exception => exception
         begin
-          log_failsafe_exception(status, originating_exception || exception)
-          body = failsafe_response_body(status)
-          fallback_output.write "Status: #{status}\r\nContent-Type: text/html\r\n\r\n#{body}"
+          log_failsafe_exception(status, exception)
+          status, ctype, body = failsafe_response_body(request, response, status)
+          ctype ||= 'text/html'
+          fallback_output.write body
+
+          # Ensure unicorn knows what status and content-type we're rollin
+          response.headers['status'] = status.to_s[0..2]
+          response.headers['Status'] = status
+          response.headers['type'] = response.headers['Content-Type'] = ctype
+          response.headers['Content-Length'] ||= body.size.to_s
+          response.request ||= request
+          response.prepare!
+          response.out(fallback_output)
           nil
         rescue Exception => failsafe_error # Logger or IO errors
           $stderr.puts "Error during failsafe response: #{failsafe_error}"
@@ -69,13 +80,38 @@ module ActionController
       end
 
       private
-        def failsafe_response_body(status)
+
+        # Builds a response body and status from a failsafe exception.
+        # Attempts to get the content type from the request to craft a better
+        # response.
+        #
+        # request - Request instance, if available.
+        # status  - HTTP Status string, defaults to "500 Internal Server Error"
+        #
+        # Returns an Array with [status, body] (two strings).
+        def failsafe_response_body(request, response, status)
+          headers = request.respond_to?(:headers) ? request.headers : {}
+          ctype   = headers['CONTENT_TYPE'].to_s.split(";", 2).first.to_s
+          msg     = "Bad Request.  Could not parse request body sent as #{ctype}"
+          case ctype
+            when ""
+            when /json/i
+              ctype = 'application/json'
+              return [BAD_REQUEST, ctype, %({"error":#{msg.inspect}})]
+            when /xml/i
+              ctype = 'application/xml'
+              return [BAD_REQUEST, ctype, %(<error><message>#{msg}</message></error>)]
+            when /ya?ml/i
+              ctype = 'application/x-yaml'
+              return [BAD_REQUEST, ctype, %(--- \nerror: #{msg.inspect})]
+          end
+
           error_path = "#{error_file_path}/#{status.to_s[0..3]}.html"
 
           if File.exist?(error_path)
-            File.read(error_path)
+            [status, nil, File.read(error_path)]
           else
-            "<html><body><h1>#{status}</h1></body></html>"
+            [status, nil, "<html><body><h1>#{status}</h1></body></html>"]
           end
         end
 
@@ -183,8 +219,11 @@ module ActionController
         @controller.process(@request, @response).out(@output)
       end
 
+      INTERNAL_SERVER_ERROR = '500 Internal Server Error'.freeze
+      BAD_REQUEST           = '400 Bad Request'.freeze
+
       def failsafe_rescue(exception)
-        self.class.failsafe_response(@output, '500 Internal Server Error', exception) do
+        self.class.failsafe_response(@output, INTERNAL_SERVER_ERROR, exception, @request, @response) do
           if @controller ||= defined?(::ApplicationController) ? ::ApplicationController : Base
             @controller.process_with_exception(@request, @response, exception).out(@output)
           else
