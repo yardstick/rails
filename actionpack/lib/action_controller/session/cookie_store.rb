@@ -168,7 +168,7 @@ class CGI::Session::CookieStore
 
   if Rails.test? || (Rails.development? && ENV['GH_SSL'].blank?)
     def write_cookie?(cookie)
-      if ApplicationController.test_ssl_requirement
+      if ApplicationController.try(:test_ssl_requirement)
         securely_write_cookie?(cookie)
       else
         true
