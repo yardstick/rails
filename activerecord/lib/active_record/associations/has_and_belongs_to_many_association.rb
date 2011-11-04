@@ -17,6 +17,14 @@ module ActiveRecord
         @reflection.reset_column_information
       end
 
+      def columns
+        @reflection.columns(@reflection.options[:join_table], "#{@reflection.options[:join_table]} Columns")
+      end
+
+      def reset_column_information
+        @reflection.reset_column_information
+      end
+
       protected
         def construct_find_options!(options)
           options[:joins]      = @join_sql
