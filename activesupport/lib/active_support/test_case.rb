@@ -5,6 +5,8 @@ require 'active_support/testing/core_ext/test'
 
 module ActiveSupport
   class TestCase < Test::Unit::TestCase
+    include ActiveSupport::Testing::SetupAndTeardown
+
     # test "verify something" do
     #   ...
     # end
