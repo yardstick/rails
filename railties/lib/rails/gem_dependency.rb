@@ -18,7 +18,7 @@ module Rails
 
     def self.add_frozen_gem_path
       @@paths_loaded ||= begin
-        source_index = Rails::VendorGemSourceIndex.new(Gem.source_index)
+        source_index = Rails::VendorGemSourceIndex.new(Gem::Specification)
         Gem.clear_paths
         Gem.source_index = source_index
         # loaded before us - we can't change them, so mark them
