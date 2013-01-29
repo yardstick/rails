@@ -1,16 +1,17 @@
-spec = Gem::Specification.new do |s|
-  s.platform = Gem::Platform::RUBY
+Gem::Specification.new do |s|
   s.name = 'activeresource'
-  s.version = '2.3.14'
-  s.summary = "Think Active Record for web resources."
-  s.description = %q{Wraps web resources in model classes that can be manipulated through XML over REST.}
+  s.version = '2.3.16'
+  s.summary = 'Think Active Record for web resources.'
+  s.description = 'Wraps web resources in model classes that can be manipulated through XML over REST.'
 
-  s.add_dependency('activesupport', '= 2.3.14')
+  s.author = 'David Heinemeier Hansson'
+  s.email = 'david@loudthinking.com'
+  s.homepage = 'http://www.rubyonrails.org'
 
   s.require_path = 'lib'
+  s.files = ['README']
+  s.rdoc_options = ['--main', 'README']
+  s.extra_rdoc_files = ['README']
 
-  s.author = "David Heinemeier Hansson"
-  s.email = "david@loudthinking.com"
-  s.homepage = "http://www.rubyonrails.org"
-  s.rubyforge_project = "activeresource"
+  s.add_dependency 'activesupport', '= 2.3.16'
 end
