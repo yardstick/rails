@@ -1,7 +1,8 @@
 module ActionController
   class ParamsParser
-    ActionController::Base.param_parsers[Mime::XML] = :xml_simple
-    ActionController::Base.param_parsers[Mime::JSON] = :json
+    # be gone!
+    # ActionController::Base.param_parsers[Mime::XML] = :xml_simple
+    # ActionController::Base.param_parsers[Mime::JSON] = :json
 
     def initialize(app)
       @app = app
