@@ -8,17 +8,24 @@ module Rails
 
       def finalize
         finalize_param_parsers
+        finalize_json_html_entity_escaping
       end
 
 
       private
 
       def finalize_param_parsers
-        unless configuration.enable_json_parsing
+        if configuration.disable_json_parsing
           ActionController::Base.param_parsers.delete(Mime::JSON)
         end
-        unless configuration.enable_xml_parsing
+        if configuration.disable_xml_parsing
           ActionController::Base.param_parsers.delete(Mime::XML)
+        end
+      end
+
+      def finalize_json_html_entity_escaping
+        if configuration.escape_html_entities_in_json
+          ActiveSupport::JSON::Encoding.escape_html_entities_in_json = true
         end
       end
 
@@ -27,8 +34,10 @@ module Rails
 
     class Configuration
 
-      attr_accessor :enable_json_parsing
-      attr_accessor :enable_xml_parsing
+      attr_accessor :disable_json_parsing
+      attr_accessor :disable_xml_parsing
+
+      attr_accessor :escape_html_entities_in_json
 
       def initialize(options)
         unless Rails.configuration.rails_lts_options
@@ -50,11 +59,13 @@ module Rails
         end
         case default
         when :hardened
-          self.enable_json_parsing = false
-          self.enable_xml_parsing = false
+          self.disable_json_parsing = true
+          self.disable_xml_parsing = true
+          self.escape_html_entities_in_json = true
         when :compatible
-          self.enable_json_parsing = true
-          self.enable_xml_parsing = true
+          self.disable_json_parsing = false
+          self.disable_xml_parsing = false
+          self.escape_html_entities_in_json = false
         end
       end
 
