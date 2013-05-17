@@ -81,3 +81,17 @@ task :pdoc => :rdoc do
     system %(cd #{project} && #{env} #{$0} pdoc)
   end
 end
+
+desc "Publish new Rails LTS release on gems.makandra.de/railslts"
+task :release_railslts do
+  for hostname in %w[c23 c42]
+    fqdn = "#{hostname}.gems.makandra.de"
+    puts "\033[1mUpdating #{fqdn}...\033[0m"
+    command = '/opt/update_railslts.sh'
+    system "ssh deploy-gems_p@#{fqdn} '#{command}'"
+    puts "done."
+  end
+
+  puts "Deployment done."
+  puts "Check https://gem.makandra.de/railtslts"
+end
