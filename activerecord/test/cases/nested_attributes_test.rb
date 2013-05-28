@@ -519,10 +519,10 @@ module NestedAttributesOnACollectionAssociationTests
     }
 
     assert @pirate.send(@association_name).first.new_record?
-    assert_equal 'Grace OMalley', @pirate.send(@association_name).first.name
+    assert_equal 'Grace OMalley', @pirate.send(@association_name).sort_by(&:name).first.name
 
     assert @pirate.send(@association_name).last.new_record?
-    assert_equal 'Privateers Greed', @pirate.send(@association_name).last.name
+    assert_equal 'Privateers Greed', @pirate.send(@association_name).sort_by(&:name).last.name
   end
 
   def test_should_not_assign_destroy_key_to_a_record
