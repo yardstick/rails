@@ -888,10 +888,10 @@ class HashToXmlTest < Test::Unit::TestCase
   end
   
   def test_escaping_to_xml
-    hash = { 
-      :bare_string        => 'First & Last Name', 
-      :pre_escaped_string => 'First &amp; Last Name'
-    }.stringify_keys
+    hash = ActiveSupport::OrderedHash[
+      'bare_string',        'First & Last Name',
+      'pre_escaped_string', 'First &amp; Last Name'
+    ]
     
     expected_xml = '<person><bare-string>First &amp; Last Name</bare-string><pre-escaped-string>First &amp;amp; Last Name</pre-escaped-string></person>'
     assert_equal expected_xml, hash.to_xml(@xml_options)
