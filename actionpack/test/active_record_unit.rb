@@ -56,8 +56,9 @@ class ActiveRecordTestConnector
             ActiveRecord::Base.establish_connection(options)
             ActiveRecord::Base.configurations = { 'sqlite3_ar_integration' => options }
             ActiveRecord::Base.connection
-          rescue Exception  # errors from establishing a connection
-            $stderr.puts 'SQLite 3 unavailable; trying SQLite 2.'
+          rescue Exception  => e # errors from establishing a connection
+            $stderr.puts "Error while establishing connection: #{e.class}: #{e.message}"
+            $stderr.puts 'Assuming this to mean SQLite 3 unavailable; trying SQLite 2.'
             options = defaults.merge :adapter => 'sqlite'
             ActiveRecord::Base.establish_connection(options)
             ActiveRecord::Base.configurations = { 'sqlite2_ar_integration' => options }
