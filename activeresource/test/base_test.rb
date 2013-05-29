@@ -55,11 +55,6 @@ class BaseTest < Test::Unit::TestCase
       <person>
         <id type=\"integer\">5</id>
         <name>Marty</name>
-        <colors type=\"yaml\">---
-      - \"red\"
-      - \"green\"
-      - \"blue\"
-      </colors>
       </person>
     eof
 
@@ -1075,13 +1070,4 @@ class BaseTest < Test::Unit::TestCase
     end
   end
 
-  def test_load_yaml_array
-    assert_nothing_raised do
-      marty = Person.find(5)
-      assert_equal 3, marty.colors.size
-      marty.colors.each do |color|
-        assert_kind_of String, color
-      end
-    end
-  end
 end
