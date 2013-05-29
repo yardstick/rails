@@ -72,7 +72,7 @@ class RescueController < ActionController::Base
 
   def raises
     render :text => 'already rendered'
-    raise "don't panic!"
+    raise "do not panic!"
   end
 
   def method_not_allowed
@@ -277,7 +277,7 @@ class RescueControllerTest < ActionController::TestCase
     assert_response :internal_server_error
     assert_template 'diagnostics.erb'
     assert @response.body.include?('RescueController#raises'), "Response should include controller and action."
-    assert @response.body.include?("don't panic"), "Response should include exception message."
+    assert @response.body.include?("do not panic"), "Response should include exception message."
   end
 
   def test_local_request_when_remote_addr_is_localhost
