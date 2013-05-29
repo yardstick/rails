@@ -82,16 +82,52 @@ task :pdoc => :rdoc do
   end
 end
 
-desc "Publish new Rails LTS release on gems.makandra.de/railslts"
-task :release_railslts do
-  for hostname in %w[c23 c42]
-    fqdn = "#{hostname}.gems.makandra.de"
-    puts "\033[1mUpdating #{fqdn}...\033[0m"
-    command = '/opt/update_railslts.sh'
-    system "ssh deploy-gems_p@#{fqdn} '#{command}'"
-    puts "done."
+namespace :railslts do
+
+  desc 'Run tests for Rails LTS compatibility'
+  task :test do
+
+    puts '', "\033[44m#{'actionmailer'}\033[0m", ''
+    system('cd actionmailer && rake test')
+
+    puts '', "\033[44m#{'actionpack'}\033[0m", ''
+    system('cd actionpack && rake test')
+
+    puts '', "\033[44m#{'activerecord (mysql)'}\033[0m", ''
+    system('cd activerecord && rake test_mysql')
+
+    puts '', "\033[44m#{'activerecord (sqlite3)'}\033[0m", ''
+    system('cd activerecord && rake test_sqlite3')
+
+    puts '', "\033[44m#{'activerecord (postgres)'}\033[0m", ''
+    system('cd activerecord && rake test_postgres')
+
+    puts '', "\033[44m#{'activeresource'}\033[0m", ''
+    system('cd activeresource && rake test')
+
+    puts '', "\033[44m#{'activesupport'}\033[0m", ''
+    system('cd activesupport && rake test')
+
+    puts '', "\033[44m#{'railties'}\033[0m", ''
+    warn 'Skipping railties!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+    # system('cd activeresource && rake test_postgres')
+
   end
 
-  puts "Deployment done."
-  puts "Check https://gem.makandra.de/railtslts"
+  desc "Publish new Rails LTS release on gems.makandra.de/railslts"
+  task :release do
+    for hostname in %w[c23 c42]
+      fqdn = "#{hostname}.gems.makandra.de"
+      puts "\033[1mUpdating #{fqdn}...\033[0m"
+      command = '/opt/update_railslts.sh'
+      system "ssh deploy-gems_p@#{fqdn} '#{command}'"
+      puts "done."
+    end
+
+    puts "Deployment done."
+    puts "Check https://gem.makandra.de/railtslts"
+  end
+
 end
+
+
