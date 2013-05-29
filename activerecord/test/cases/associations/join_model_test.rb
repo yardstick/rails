@@ -343,14 +343,14 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
   end
 
   def test_has_many_polymorphic_with_source_type
-    assert_equal posts(:welcome, :thinking), tags(:general).tagged_posts
+    assert_equal posts(:thinking, :welcome), tags(:general).tagged_posts.sort_by(&:title)
   end
 
   def test_eager_has_many_polymorphic_with_source_type
     tag_with_include = Tag.find(tags(:general).id, :include => :tagged_posts)
     desired = posts(:welcome, :thinking)
     assert_no_queries do
-      assert_equal desired, tag_with_include.tagged_posts
+      assert_equal desired.sort_by(&:id), tag_with_include.tagged_posts.sort_by(&:id)
     end
     assert_equal 5, tag_with_include.taggings.length
   end
@@ -377,7 +377,7 @@ class AssociationsJoinModelTest < ActiveRecord::TestCase
   end
 
   def test_has_many_through_polymorphic_has_one
-    assert_equal Tagging.find(1,2).sort_by { |t| t.id }, authors(:david).tagging
+    assert_equal Tagging.find(1,2).sort_by(&:id), authors(:david).tagging.sort_by(&:id)
   end
 
   def test_has_many_through_polymorphic_has_many

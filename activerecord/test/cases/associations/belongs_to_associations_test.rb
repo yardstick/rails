@@ -288,7 +288,7 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
 
   def test_new_record_with_foreign_key_but_no_object
     c = Client.new("firm_id" => 1)
-    assert_equal Firm.find(:first), c.firm_with_basic_id
+    assert_equal companies(:first_firm), c.firm_with_basic_id
   end
 
   def test_forgetting_the_load_when_foreign_key_enters_late
@@ -296,7 +296,8 @@ class BelongsToAssociationsTest < ActiveRecord::TestCase
     assert_nil c.firm_with_basic_id
 
     c.firm_id = 1
-    assert_equal Firm.find(:first), c.firm_with_basic_id
+
+    assert_equal companies(:first_firm), c.firm_with_basic_id
   end
 
   def test_field_name_same_as_foreign_key

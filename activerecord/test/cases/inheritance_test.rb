@@ -136,8 +136,8 @@ class InheritanceTest < ActiveRecord::TestCase
 
   def test_update_all_within_inheritance
     Client.update_all "name = 'I am a client'"
-    assert_equal "I am a client", Client.find(:all).first.name
-    assert_equal "37signals", Firm.find(:all).first.name
+    assert_equal "I am a client", companies(:first_client).name # affected
+    assert_equal "37signals", companies(:first_firm).name # not affected
   end
 
   def test_alt_update_all_within_inheritance

@@ -7,7 +7,7 @@ class TimestampTest < ActiveRecord::TestCase
   fixtures :developers, :owners, :pets
 
   def setup
-    @developer = Developer.first
+    @developer = developers(:david)
     @previously_updated_at = @developer.updated_at
   end
 
@@ -38,7 +38,7 @@ class TimestampTest < ActiveRecord::TestCase
   end
   
   def test_saving_a_record_with_a_belongs_to_that_specifies_touching_the_parent_should_update_the_parent_updated_at
-    pet   = Pet.first
+    pet   = pets(:parrot)
     owner = pet.owner
     previously_owner_updated_at = owner.updated_at
     
@@ -49,7 +49,7 @@ class TimestampTest < ActiveRecord::TestCase
   end
 
   def test_destroying_a_record_with_a_belongs_to_that_specifies_touching_the_parent_should_update_the_parent_updated_at
-    pet   = Pet.first
+    pet   = pets(:parrot)
     owner = pet.owner
     previously_owner_updated_at = owner.updated_at
     
@@ -61,7 +61,7 @@ class TimestampTest < ActiveRecord::TestCase
   def test_saving_a_record_with_a_belongs_to_that_specifies_touching_a_specific_attribute_the_parent_should_update_that_attribute
     Pet.belongs_to :owner, :touch => :happy_at
 
-    pet   = Pet.first
+    pet   = pets(:parrot)
     owner = pet.owner
     previously_owner_happy_at = owner.happy_at
     

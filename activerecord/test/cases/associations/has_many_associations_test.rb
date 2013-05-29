@@ -124,23 +124,32 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_counting
-    assert_equal 2, Firm.find(:first).plain_clients.count
+
+    #puts ">" * 80
+    #p Firm.all
+    #puts "----"
+    #puts Firm.find(:first)
+    #puts "----"
+    #puts companies(:first_firm)
+    #puts "<" * 80
+
+    assert_equal 2, companies(:first_firm).plain_clients.count
   end
 
   def test_counting_with_empty_hash_conditions
-    assert_equal 2, Firm.find(:first).plain_clients.count(:conditions => {})
+    assert_equal 2, companies(:first_firm).plain_clients.count(:conditions => {})
   end
 
   def test_counting_with_single_conditions
-    assert_equal 1, Firm.find(:first).plain_clients.count(:conditions => ['name=?', "Microsoft"])
+    assert_equal 1, companies(:first_firm).plain_clients.count(:conditions => ['name=?', "Microsoft"])
   end
 
   def test_counting_with_single_hash
-    assert_equal 1, Firm.find(:first).plain_clients.count(:conditions => {:name => "Microsoft"})
+    assert_equal 1, companies(:first_firm).plain_clients.count(:conditions => {:name => "Microsoft"})
   end
 
   def test_counting_with_column_name_and_hash
-    assert_equal 2, Firm.find(:first).plain_clients.count(:name)
+    assert_equal 2, companies(:first_firm).plain_clients.count(:name)
   end
 
   def test_counting_with_association_limit
@@ -150,12 +159,12 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_finding
-    assert_equal 2, Firm.find(:first).clients.length
+    assert_equal 2, companies(:first_firm).clients.length
   end
 
   def test_find_with_blank_conditions
     [[], {}, nil, ""].each do |blank|
-      assert_equal 2, Firm.find(:first).clients.find(:all, :conditions => blank).size
+      assert_equal 2, companies(:first_firm).clients.find(:all, :conditions => blank).size
     end
   end
 
@@ -210,37 +219,42 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_triple_equality
-    assert !(Array === Firm.find(:first).clients)
-    assert Firm.find(:first).clients === Array
+    assert !(Array === companies(:first_firm).clients)
+    assert companies(:first_firm).clients === Array
   end
 
   def test_finding_default_orders
-    assert_equal "Summit", Firm.find(:first).clients.first.name
+    if current_adapter?(:PostgreSQLAdapter)
+      warn "Skipping test 'test_finding_default_orders' because PostgreSQL doesn't track insertion order"
+    else
+      assert_equal "Summit", companies(:first_firm).clients.first.name
+    end
   end
 
   def test_finding_with_different_class_name_and_order
-    assert_equal "Microsoft", Firm.find(:first).clients_sorted_desc.first.name
+    assert_equal "Microsoft", companies(:first_firm).clients_sorted_desc.first.name
   end
 
   def test_finding_with_foreign_key
-    assert_equal "Microsoft", Firm.find(:first).clients_of_firm.first.name
+    assert_equal "Microsoft", companies(:first_firm).clients_of_firm.first.name
   end
 
   def test_finding_with_condition
-    assert_equal "Microsoft", Firm.find(:first).clients_like_ms.first.name
+    assert_equal "Microsoft", companies(:first_firm).clients_like_ms.first.name
   end
 
   def test_finding_with_condition_hash
-    assert_equal "Microsoft", Firm.find(:first).clients_like_ms_with_hash_conditions.first.name
+    assert_equal "Microsoft", companies(:first_firm).clients_like_ms_with_hash_conditions.first.name
   end
 
   def test_finding_using_primary_key
-    assert_equal "Summit", Firm.find(:first).clients_using_primary_key.first.name
+    assert_equal "Summit", companies(:first_firm).clients_using_primary_key.first.name
   end
 
   def test_finding_using_sql
-    firm = Firm.find(:first)
-    first_client = firm.clients_using_sql.first
+    firm = companies(:first_firm)
+
+    first_client = firm.clients_using_sql.sort_by(&:name).last
     assert_not_nil first_client
     assert_equal "Microsoft", first_client.name
     assert_equal 1, firm.clients_using_sql.size
@@ -248,14 +262,14 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_counting_using_sql
-    assert_equal 1, Firm.find(:first).clients_using_counter_sql.size
-    assert Firm.find(:first).clients_using_counter_sql.any?
-    assert_equal 0, Firm.find(:first).clients_using_zero_counter_sql.size
-    assert !Firm.find(:first).clients_using_zero_counter_sql.any?
+    assert_equal 1, companies(:first_firm).clients_using_counter_sql.size
+    assert companies(:first_firm).clients_using_counter_sql.any?
+    assert_equal 0, companies(:first_firm).clients_using_zero_counter_sql.size
+    assert !companies(:first_firm).clients_using_zero_counter_sql.any?
   end
 
   def test_counting_non_existant_items_using_sql
-    assert_equal 0, Firm.find(:first).no_clients_using_counter_sql.size
+    assert_equal 0, companies(:first_firm).no_clients_using_counter_sql.size
   end
 
   def test_belongs_to_sanity
@@ -273,7 +287,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_find_ids
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
 
     assert_raise(ActiveRecord::RecordNotFound) { firm.clients.find }
 
@@ -293,7 +307,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_find_string_ids_when_using_finder_sql
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
 
     client = firm.clients_using_finder_sql.find("2")
     assert_kind_of Client, client
@@ -309,7 +323,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_find_all
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     assert_equal 2, firm.clients.find(:all, :conditions => "#{QUOTED_TYPE} = 'Client'").length
     assert_equal 1, firm.clients.find(:all, :conditions => "name = 'Summit'").length
   end
@@ -354,21 +368,21 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_find_all_sanitized
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     summit = firm.clients.find(:all, :conditions => "name = 'Summit'")
     assert_equal summit, firm.clients.find(:all, :conditions => ["name = ?", "Summit"])
     assert_equal summit, firm.clients.find(:all, :conditions => ["name = :name", { :name => "Summit" }])
   end
 
   def test_find_first
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     client2 = Client.find(2)
     assert_equal firm.clients.first, firm.clients.find(:first)
     assert_equal client2, firm.clients.find(:first, :conditions => "#{QUOTED_TYPE} = 'Client'")
   end
 
   def test_find_first_sanitized
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     client2 = Client.find(2)
     assert_equal client2, firm.clients.find(:first, :conditions => ["#{QUOTED_TYPE} = ?", 'Client'])
     assert_equal client2, firm.clients.find(:first, :conditions => ["#{QUOTED_TYPE} = :type", { :type => 'Client' }])
@@ -437,7 +451,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
 
   def test_create_with_bang_on_has_many_raises_when_record_not_saved
     assert_raise(ActiveRecord::RecordInvalid) do
-      firm = Firm.find(:first)
+      firm = companies(:first_firm)
       firm.plain_clients.create!
     end
   end
@@ -604,7 +618,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_deleting_updates_counter_cache
-    topic = Topic.first
+    topic = topics(:first)
     assert_equal topic.replies.to_a.size, topic.replies_count
 
     topic.replies.delete(topic.replies.first)
@@ -746,14 +760,14 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_delete_all_association_with_primary_key_deletes_correct_records
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     # break the vanilla firm_id foreign key
     assert_equal 2, firm.clients.count
     firm.clients.first.update_attribute(:firm_id, nil)
     assert_equal 1, firm.clients(true).count
     assert_equal 1, firm.clients_using_primary_key_with_delete_all.count
     old_record = firm.clients_using_primary_key_with_delete_all.first
-    firm = Firm.find(:first)
+    firm = Firm.find(firm.id) # clean reload
     firm.destroy
     assert Client.find_by_id(old_record.id).nil?
   end
@@ -900,7 +914,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_destroy_dependent_when_deleted_from_association
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     assert_equal 2, firm.clients.size
 
     client = firm.clients.first
@@ -938,10 +952,12 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_depends_and_nullify
+    accounts(:rails_core_account_2).destroy # fixtures in accounts.yml won't work for PostgreSQL, which doesn't track insertion order
+
     num_accounts = Account.count
     num_companies = Company.count
 
-    core = companies(:rails_core)
+    core = companies(:rails_core) # was :rails_core, but that had two accounts
     assert_equal accounts(:rails_core_account), core.account
     assert_equal companies(:leetsoft, :jadedpixel), core.companies
     core.destroy
@@ -958,7 +974,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_adding_array_and_collection
-    assert_nothing_raised { Firm.find(:first).clients + Firm.find(:all).last.clients }
+    assert_nothing_raised { companies(:first_firm).clients + Firm.find(:all).last.clients }
   end
 
   def test_find_all_without_conditions
@@ -967,7 +983,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_replace_with_less
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     firm.clients = [companies(:first_client)]
     assert firm.save, "Could not save firm"
     firm.reload
@@ -981,7 +997,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_replace_with_new
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     firm.clients = [companies(:second_client), Client.new("name" => "New Client")]
     firm.save
     firm.reload
@@ -1234,7 +1250,7 @@ class HasManyAssociationsTest < ActiveRecord::TestCase
   end
 
   def test_creating_using_primary_key
-    firm = Firm.find(:first)
+    firm = companies(:first_firm)
     client = firm.clients_using_primary_key.create!(:name => 'test')
     assert_equal firm.name, client.firm_name
   end
