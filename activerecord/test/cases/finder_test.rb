@@ -8,6 +8,7 @@ require 'models/topic'
 require 'models/reply'
 require 'models/entrant'
 require 'models/developer'
+require 'models/project'
 require 'models/customer'
 require 'models/job'
 require 'models/categorization'
@@ -504,11 +505,11 @@ class FinderTest < ActiveRecord::TestCase
     assert_equal quoted_abc, bind(':a', :a => %w(a b c)) # '
 
     require 'set'
-    assert_equal '1,2,3', bind('?', Set.new([1, 2, 3]))
-    assert_equal quoted_abc, bind('?', Set.new(%w(a b c)))
+    assert_equal '1,2,3', bind('?', SortedSet.new([1, 2, 3]))
+    assert_equal quoted_abc, bind('?', SortedSet.new(%w(a b c)))
 
-    assert_equal '1,2,3', bind(':a', :a => Set.new([1, 2, 3]))
-    assert_equal quoted_abc, bind(':a', :a => Set.new(%w(a b c))) # '
+    assert_equal '1,2,3', bind(':a', :a => SortedSet.new([1, 2, 3]))
+    assert_equal quoted_abc, bind(':a', :a => SortedSet.new(%w(a b c))) # '
   end
 
   def test_bind_empty_enumerable
