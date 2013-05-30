@@ -110,7 +110,6 @@ namespace :railslts do
 
     puts '', "\033[44m#{'railties'}\033[0m", ''
     warn 'Skipping railties!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-    # system('cd activeresource && rake test_postgres')
 
   end
 
@@ -136,7 +135,7 @@ namespace :railslts do
       unless existing_remotes.include?('community')
         system('git remote add community git@github.com:makandra/rails.git') or raise "Couldn't add remote'"
       end
-      system('git fetch community && git checkout community/2-3-lts && git merge 2-3-lts && git push && git checkout 2-3-lts') or raise 'Error while publishing'
+      system('git fetch community && git push community 2-3-lts') or raise 'Error while publishing'
       puts "Deployment done."
       puts "Check https://github.com/makandra/rails/tree/2-3-lts"
     end
