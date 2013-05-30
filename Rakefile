@@ -114,18 +114,33 @@ namespace :railslts do
 
   end
 
-  desc "Publish new Rails LTS release on gems.makandra.de/railslts"
-  task :release do
-    for hostname in %w[c23 c42]
-      fqdn = "#{hostname}.gems.makandra.de"
-      puts "\033[1mUpdating #{fqdn}...\033[0m"
-      command = '/opt/update_railslts.sh'
-      system "ssh deploy-gems_p@#{fqdn} '#{command}'"
-      puts "done."
+  namespace :release do
+
+    desc "Publish new Rails LTS customer release on gems.makandra.de/railslts"
+    task :customer do
+      for hostname in %w[c23 c42]
+        fqdn = "#{hostname}.gems.makandra.de"
+        puts "\033[1mUpdating #{fqdn}...\033[0m"
+        command = '/opt/update_railslts.sh'
+        system "ssh deploy-gems_p@#{fqdn} '#{command}'"
+        puts "done."
+      end
+
+      puts "Deployment done."
+      puts "Check https://gem.makandra.de/railtslts"
     end
 
-    puts "Deployment done."
-    puts "Check https://gem.makandra.de/railtslts"
+    desc "Publish new Rails LTS community release on github.com/makandra/rails"
+    task :community do
+      existing_remotes = `git remote`
+      unless existing_remotes.include?('community')
+        system('git remote add community git@github.com:makandra/rails.git') or raise "Couldn't add remote'"
+      end
+      system('git fetch community && git checkout community/2-3-lts && git merge 2-3-lts && git push && git checkout 2-3-lts') or raise 'Error while publishing'
+      puts "Deployment done."
+      puts "Check https://github.com/makandra/rails/tree/2-3-lts"
+    end
+
   end
 
 end
