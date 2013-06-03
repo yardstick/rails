@@ -5,7 +5,7 @@ require 'active_support/core_ext/hash/conversions'
 begin
   require 'libxml'
 rescue LoadError
-  # Skip libxml tests
+  $stderr.puts "Skipping libxml tests. `gem install libxml-ruby` and try again."
 else
 
 class LibXMLSAXEngineTest < Test::Unit::TestCase
