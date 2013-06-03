@@ -87,6 +87,9 @@ namespace :railslts do
   desc 'Run tests for Rails LTS compatibility'
   task :test do
 
+    puts '', "\033[44m#{'activesupport'}\033[0m", ''
+    system('cd activesupport && rake test')
+
     puts '', "\033[44m#{'actionmailer'}\033[0m", ''
     system('cd actionmailer && rake test')
 
@@ -100,13 +103,10 @@ namespace :railslts do
     system('cd activerecord && rake test_sqlite3')
 
     puts '', "\033[44m#{'activerecord (postgres)'}\033[0m", ''
-    system('cd activerecord && rake test_postgres')
+    system('cd activerecord && rake test_postgresql')
 
     puts '', "\033[44m#{'activeresource'}\033[0m", ''
     system('cd activeresource && rake test')
-
-    puts '', "\033[44m#{'activesupport'}\033[0m", ''
-    system('cd activesupport && rake test')
 
     puts '', "\033[44m#{'railties'}\033[0m", ''
     warn 'Skipping railties!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
