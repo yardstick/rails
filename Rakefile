@@ -113,10 +113,61 @@ namespace :railslts do
 
   end
 
+  task :clean_gems do
+    PROJECTS.each do |project|
+      pkg_folder = "#{project}/pkg"
+      puts "Emptying packages folder #{pkg_folder}..."
+      FileUtils.mkdir_p(pkg_folder)
+      system("rm -rf #{pkg_folder}/*") or raise "failed"
+    end
+  end
+
+  task :clean_building_artifacts do
+    PROJECTS.each do |project|
+      pkg_folder = "#{project}/pkg"
+      puts "Deleting building artifacts from #{pkg_folder}..."
+      system("rm -rf #{pkg_folder}/*.tgz") or raise "failed" # TGZ
+      system("rm -rf #{pkg_folder}/*.zip") or raise "failed" # ZIP
+      system("rm -rf #{pkg_folder}/*/") or raise "failed"    # Folder
+    end
+  end
+
+  task :zip_gems do
+    puts "Zipping archive for manual installation..."
+    archive_name = "railslts.tar.gz"
+    system("cd dist && rm -f #{archive_name} && tar -czvhf #{archive_name} railslts/ && cd ..") or raise "failed"
+  end
+
+  desc 'Builds *.gem packages for static distribution without Git'
+  task :build_gems => [:clean_gems, :package, :clean_building_artifacts, :zip_gems] do
+    puts "Done."
+  end
+
   namespace :release do
 
+    task :ensure_ready do
+      jobs = [
+        'Did you build static gems using `rake railslts:build_gems`?',
+        'Did you push your changes?',
+      ]
+
+      puts
+
+      jobs.each do |job|
+        print "#{job} [y/n] "
+        answer = STDIN.gets
+        puts
+        unless answer.strip == 'y'
+          $stderr.puts "Aborting. Nothing was released."
+          puts
+          exit
+        end
+      end
+    end
+
+
     desc "Publish new Rails LTS customer release on gems.makandra.de/railslts"
-    task :customer do
+    task :customer => :ensure_ready do
       for hostname in %w[c23 c42]
         fqdn = "#{hostname}.gems.makandra.de"
         puts "\033[1mUpdating #{fqdn}...\033[0m"
@@ -130,7 +181,7 @@ namespace :railslts do
     end
 
     desc "Publish new Rails LTS community release on github.com/makandra/rails"
-    task :community do
+    task :community => :ensure_ready do
       existing_remotes = `git remote`
       unless existing_remotes.include?('community')
         system('git remote add community git@github.com:makandra/rails.git') or raise "Couldn't add remote'"
