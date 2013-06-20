@@ -145,12 +145,13 @@ namespace :railslts do
 
   desc 'Updates the LICENSE file in individual sub-projects'
   task :update_license do
+    last_change = Date.parse(`git log -1 --format=%cd`)
     PROJECTS.each do |project|
       license_path = "#{project}/LICENSE"
       puts "Updating license #{license_path}..."
       File.exists?(license_path) or raise "Could not find license: #{license_path}"
       license = File.read(license_path)
-      license.sub!(/ before(.*?)\./ , " before #{Date.today.strftime("%B %d, %Y")}.") or raise "Couldn't find timestamp."
+      license.sub!(/ before(.*?)\./ , " before #{last_change.strftime("%B %d, %Y")}.") or raise "Couldn't find timestamp."
       File.open(license_path, "w") { |w| w.write(license) }
     end
   end
