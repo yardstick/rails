@@ -44,7 +44,7 @@ if RAKEVERSION == '0.8.0'
     rdoc.template = ENV['template'] ? "#{ENV['template']}.rb" : './doc/template/horo'
 
     rdoc.rdoc_files.include('railties/CHANGELOG')
-    rdoc.rdoc_files.include('railties/MIT-LICENSE')
+    rdoc.rdoc_files.include('railties/LICENSE')
     rdoc.rdoc_files.include('railties/README')
     rdoc.rdoc_files.include('railties/lib/{*.rb,commands/*.rb,rails/*.rb,rails_generator/*.rb}')
 
@@ -143,12 +143,25 @@ namespace :railslts do
     puts "Done."
   end
 
+  desc 'Updates the LICENSE file in individual sub-projects'
+  task :update_license do
+    PROJECTS.each do |project|
+      license_path = "#{project}/LICENSE"
+      puts "Updating license #{license_path}..."
+      File.exists?(license_path) or raise "Could not find license: #{license_path}"
+      license = File.read(license_path)
+      license.sub!(/ before(.*?)\./ , " before #{Date.today.strftime("%B %d, %Y")}.") or raise "Couldn't find timestamp."
+      File.open(license_path, "w") { |w| w.write(license) }
+    end
+  end
+
   namespace :release do
 
     task :ensure_ready do
       jobs = [
         'Did you build static gems using `rake railslts:build_gems`?',
-        'Did you push your changes?',
+        'Did you update the LICENSE files using `rake railslts:update_license`?',
+        'Did you commit and your changes, as well as the changes by the Rake tasks mentioned above?',
       ]
 
       puts

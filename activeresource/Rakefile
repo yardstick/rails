@@ -62,7 +62,7 @@ spec = Gem::Specification.new do |s|
   s.summary = "Think Active Record for web resources."
   s.description = %q{Wraps web resources in model classes that can be manipulated through XML over REST.}
 
-  s.files = [ "Rakefile", "README", "CHANGELOG" ]
+  s.files = [ "Rakefile", "README", "CHANGELOG", "LICENSE" ]
   dist_dirs.each do |dir|
     s.files = s.files + Dir.glob( "#{dir}/**/*" ).delete_if { |item| item.include?( "\.svn" ) }
   end
