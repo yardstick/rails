@@ -8,7 +8,7 @@ class ErbUtilTest < ActiveSupport::TestCase
       assert_equal expected, html_escape(given)
     end
 
-    unless given == '"'
+    unless given == '"' || given == "'"
       define_method "test_json_escape_#{expected.gsub /\W/, ''}" do
         failed_pre_200 if given == ?'
 
@@ -28,12 +28,12 @@ class ErbUtilTest < ActiveSupport::TestCase
     assert_equal "<p>", escaped
     assert escaped.html_safe?
   end
-  
+
   def test_rest_in_ascii
     failed_pre_200
 
     (0..127).to_a.map(&:chr).each do |chr|
-      next if %w(& " < >).include?(chr)
+      next if %w(& " < > ').include?(chr)
       assert_equal chr, html_escape(chr)
     end
   end

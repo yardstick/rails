@@ -228,21 +228,30 @@ class IntegrationTestTest < Test::Unit::TestCase
 end
 
 require 'active_record_unit'
-# Tests that fixtures are accessible in the integration test sessions
-class IntegrationTestWithFixtures < ActiveRecordTestCase
-  include ActionController::Integration::Runner
 
-  def test_fixtures_in_new_session
-    skip "failed pre 2.0.0"
+if ENV['TEST'].blank?
+  warn "Skipping test_fixtures_in_new_session which only passes when the test is run as stand-alone"
 
-    sym = :thirty_seven_signals
-    # fixtures are accessible in main session
-    assert_not_nil companies(sym)
+else
 
-    # create a new session and the fixtures should be accessible in it as well
-    session1 = open_session { |sess| }
-    assert_not_nil session1.companies(sym)
+  # Tests that fixtures are accessible in the integration test sessions
+  class IntegrationTestWithFixtures < ActiveRecordTestCase
+    include ActionController::Integration::Runner
+
+    fixtures :companies
+
+    def test_fixtures_in_new_session
+
+      sym = :thirty_seven_signals
+      # fixtures are accessible in main session
+      assert_not_nil companies(sym)
+
+      # create a new session and the fixtures should be accessible in it as well
+      session1 = open_session { |sess| }
+      assert_not_nil session1.companies(sym)
+    end
   end
+
 end
 
 # Tests that integration tests don't call Controller test methods for processing.

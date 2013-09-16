@@ -2307,7 +2307,7 @@ module ActiveRecord #:nodoc:
         def expand_hash_conditions_for_aggregates(attrs)
           expanded_attrs = {}
           attrs.each do |attr, value|
-            unless (aggregation = reflect_on_aggregation(attr.to_sym)).nil?
+            unless (aggregation = reflect_on_aggregation(attr)).nil?
               mapping = aggregate_mapping(aggregation)
               mapping.each do |field_attr, aggregate_attr|
                 if mapping.size == 1 && !value.respond_to?(aggregate_attr)
@@ -2339,6 +2339,8 @@ module ActiveRecord #:nodoc:
         #     # => "address_street='123 abc st.' and address_city='chicago'"
         def sanitize_sql_hash_for_conditions(attrs, default_table_name = quoted_table_name, top_level = true)
           attrs = expand_hash_conditions_for_aggregates(attrs)
+
+          return '1 = 2' if !top_level && attrs.is_a?(Hash) && attrs.empty?
 
           conditions = attrs.map do |attr, value|
             table_name = default_table_name
@@ -2998,11 +3000,11 @@ module ActiveRecord #:nodoc:
       def remove_attributes_protected_from_mass_assignment(attributes)
         safe_attributes =
           if self.class.accessible_attributes.nil? && self.class.protected_attributes.nil?
-            attributes.reject { |key, value| attributes_protected_by_default.include?(key.gsub(/\(.+/, "")) }
+            attributes.reject { |key, value| attributes_protected_by_default.include?(key.gsub(/\(.+/m, "")) }
           elsif self.class.protected_attributes.nil?
-            attributes.reject { |key, value| !self.class.accessible_attributes.include?(key.gsub(/\(.+/, "")) || attributes_protected_by_default.include?(key.gsub(/\(.+/, "")) }
+            attributes.reject { |key, value| !self.class.accessible_attributes.include?(key.gsub(/\(.+/m, "")) || attributes_protected_by_default.include?(key.gsub(/\(.+/m, "")) }
           elsif self.class.accessible_attributes.nil?
-            attributes.reject { |key, value| self.class.protected_attributes.include?(key.gsub(/\(.+/,"")) || attributes_protected_by_default.include?(key.gsub(/\(.+/, "")) }
+            attributes.reject { |key, value| self.class.protected_attributes.include?(key.gsub(/\(.+/m,"")) || attributes_protected_by_default.include?(key.gsub(/\(.+/m, "")) }
           else
             raise "Declare either attr_protected or attr_accessible for #{self.class}, but not both."
           end

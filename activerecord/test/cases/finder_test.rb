@@ -8,6 +8,7 @@ require 'models/topic'
 require 'models/reply'
 require 'models/entrant'
 require 'models/developer'
+require 'models/project'
 require 'models/customer'
 require 'models/job'
 require 'models/categorization'
@@ -65,6 +66,18 @@ end
 
 class FinderTest < ActiveRecord::TestCase
   fixtures :companies, :topics, :entrants, :developers, :developers_projects, :posts, :comments, :accounts, :authors, :customers
+
+  def test_find_by_id_with_hash
+    assert_raises(ActiveRecord::StatementInvalid) do
+      Post.find_by_id(:limit => 1)
+    end
+  end
+
+  def test_find_by_title_and_id_with_hash
+    assert_raises(ActiveRecord::StatementInvalid) do
+      Post.find_by_title_and_id('foo', :limit => 1)
+    end
+  end
 
   def test_find
     assert_equal(topics(:first).title, Topic.find(1).title)
@@ -149,6 +162,40 @@ class FinderTest < ActiveRecord::TestCase
 
   def test_find_an_empty_array
     assert_equal [], Topic.find([])
+  end
+
+  def test_find_by_with_an_array_with_single_nil_element_does_not_match_null_values
+    topic = Topic.find_by_last_read([nil])
+    assert_nil topic
+  end
+
+  def test_find_first_with_an_array_with_single_nil_element_does_not_match_null_values
+    topic = Topic.find(:first, :conditions => { :last_read => [nil] })
+    assert_nil topic
+  end
+
+  def test_find_all_by_with_an_array_with_trailing_nil_element_does_not_match_null_values
+    only_topic_with_last_read_set = topics(:first)
+    assert_not_nil only_topic_with_last_read_set.last_read
+    topics = Topic.find_all_by_last_read([only_topic_with_last_read_set.last_read, nil])
+    assert_equal [only_topic_with_last_read_set], topics
+  end
+
+  def test_find_all_with_an_array_with_trailing_nil_element_does_not_match_null_values
+    only_topic_with_last_read_set = topics(:first)
+    assert_not_nil only_topic_with_last_read_set.last_read
+    topics = Topic.find(:all, :conditions => { :last_read => [only_topic_with_last_read_set.last_read, nil] })
+    assert_equal [only_topic_with_last_read_set], topics
+  end
+
+  def test_find_by_with_an_empty_hash_does_not_match_anything
+    topic = Topic.find_by_last_read({})
+    assert_nil topic
+  end
+
+  def test_find_first_with_an_empty_hash_does_not_match_anything
+    topic = Topic.find(:first, :conditions => { :last_read => {} })
+    assert_nil topic
   end
 
   def test_find_by_ids_missing_one
@@ -492,11 +539,11 @@ class FinderTest < ActiveRecord::TestCase
     assert_equal quoted_abc, bind(':a', :a => %w(a b c)) # '
 
     require 'set'
-    assert_equal '1,2,3', bind('?', Set.new([1, 2, 3]))
-    assert_equal quoted_abc, bind('?', Set.new(%w(a b c)))
+    assert_equal '1,2,3', bind('?', SortedSet.new([1, 2, 3]))
+    assert_equal quoted_abc, bind('?', SortedSet.new(%w(a b c)))
 
-    assert_equal '1,2,3', bind(':a', :a => Set.new([1, 2, 3]))
-    assert_equal quoted_abc, bind(':a', :a => Set.new(%w(a b c))) # '
+    assert_equal '1,2,3', bind(':a', :a => SortedSet.new([1, 2, 3]))
+    assert_equal quoted_abc, bind(':a', :a => SortedSet.new(%w(a b c))) # '
   end
 
   def test_bind_empty_enumerable

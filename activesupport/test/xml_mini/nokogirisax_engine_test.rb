@@ -5,7 +5,7 @@ require 'active_support/core_ext/hash/conversions'
 begin
   require 'nokogiri'
 rescue LoadError
-  # Skip nokogiri tests
+  $stderr.puts "Skipping nokogiri tests. `gem install nokogiri` and try again."
 else
 
 class NokogiriSAXEngineTest < Test::Unit::TestCase

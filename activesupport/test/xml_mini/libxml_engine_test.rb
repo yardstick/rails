@@ -9,7 +9,7 @@ else
 
 require 'libxml'
 
-class NokogiriEngineTest < Test::Unit::TestCase
+class LibXMLEngineTest < Test::Unit::TestCase
   include ActiveSupport
 
   def setup

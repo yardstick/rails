@@ -10,11 +10,7 @@ module ActiveSupport
         def decode(json)
           raise "The Yaml backend has been deprecated due to security risks, you should set ActiveSupport::JSON.backend = 'OkJson'"
         end
-
-        protected
-
       end
     end
   end
 end
-

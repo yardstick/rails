@@ -5,11 +5,24 @@ class TranslationHelperTest < ActiveSupport::TestCase
   include ActionView::Helpers::TranslationHelper
 
   attr_reader :request
+
   def setup
+    I18n.backend.store_translations(:en,
+      :translations => {
+        :foo => 'Foo',
+        :bar => 'Bar',
+        :hello => '<a>Hello World</a>',
+        :html => '<a>Hello World</a>',
+        :hello_html => '<a>Hello World</a>',
+        :interpolated_html => '<a>Hello %{word}</a>',
+        :array_html => %w(foo bar),
+        :array => %w(foo bar)
+      }
+    )
   end
 
   def test_delegates_to_i18n_setting_the_raise_option
-    I18n.expects(:translate).with(['foo'], :locale => 'en', :raise => true).returns([""])
+    I18n.expects(:translate).with('foo', :locale => 'en', :raise => true).returns("")
     translate :foo, :locale => 'en'
   end
 
@@ -19,31 +32,26 @@ class TranslationHelperTest < ActiveSupport::TestCase
   end
 
   def test_translation_returning_an_array
-    I18n.expects(:translate).with(["foo"], :raise => true).returns(["foo", "bar"])
-    assert_equal ["foo", "bar"], translate(:foo)
+    assert_equal ["foo", "bar"], translate('translations.array')
   end
 
   def test_translation_of_an_array
     assert_deprecated do
-      I18n.expects(:translate).with(["foo", "bar"], :raise => true).returns(["foo", "bar"])
-      assert_equal ["foo", "bar"], translate(["foo", "bar"])
+      assert_equal ["Foo", "Bar"], translate(["translations.foo", "translations.bar"])
     end
   end
 
   def test_translation_of_an_array_returning_an_array
     assert_deprecated do
-      I18n.expects(:translate).with(["foo", "bar"], :raise => true).returns(["foo", ["bar", "baz"]])
-      assert_equal ["foo", ["bar", "baz"]], translate(["foo", "bar"])
+      assert_equal ["Foo", ["foo", "bar"]], translate(["translations.foo", "translations.array"])
     end
   end
 
   def test_translation_of_an_array_with_html
     failed_pre_200
     assert_deprecated do
-      translate_expected = ['<a href="#">foo</a>', '<a href="#">bar</a>', '<a href="#">baz</a>']
-      I18n.expects(:translate).with(["foo", "bar", "baz_html"], :raise => true).returns(translate_expected)
       @view = ActionView::Base.new(ActionController::Base.view_paths, {})
-      expected = '<a href="#">foo</a>, <a href="#">bar</a>, <a href="#">baz</a>'
+      expected = '<a>Hello World</a>, <a>Hello World</a>, <a>Hello World</a>'
       assert_equal expected, @view.render(:file => "test/array_translation")
     end
   end
@@ -55,42 +63,51 @@ class TranslationHelperTest < ActiveSupport::TestCase
   end
 
   def test_scoping_by_partial
-    I18n.expects(:translate).with(["test.translation.helper"], :raise => true).returns(["helper"])
+    I18n.expects(:translate).with("test.translation.helper", :raise => true).returns("helper")
     @view = ActionView::Base.new(ActionController::Base.view_paths, {})
     assert_equal "helper", @view.render(:file => "test/translation")
   end
 
   def test_scoping_by_partial_of_an_array
     assert_deprecated do
-      I18n.expects(:translate).with(["test.scoped_array_translation.foo", "test.scoped_array_translation.bar"], :raise => true).returns(["foo", "bar"])
+      I18n.expects(:translate).with("test.scoped_array_translation.foo", :raise => true).returns("foo")
+      I18n.expects(:translate).with("test.scoped_array_translation.bar", :raise => true).returns("bar")
       @view = ActionView::Base.new(ActionController::Base.view_paths, {})
+      # the view will call translate with unqualified keys, e.g. translate(".foo")
       assert_equal "foo, bar", @view.render(:file => "test/scoped_array_translation")
     end
   end
 
   def test_translate_works_with_symbols
-    I18n.expects(:translate).with(["hello"], :raise => true).returns(["Hello World"])
-    assert_equal "Hello World", translate(:hello)
+    assert_equal "Foo", translate(:'translations.foo')
   end
 
 
   def test_translate_does_not_mark_plain_text_as_safe_html
-    I18n.expects(:translate).with(["hello"], :raise => true).returns(["Hello World"])
-    assert_equal false, translate("hello").html_safe?
+    assert_equal false, translate("translations.hello").html_safe?
   end
 
   def test_translate_marks_translations_named_html_as_safe_html
-    I18n.expects(:translate).with(["html"], :raise => true).returns(["<a>Hello World</a>"])
-    assert translate("html").html_safe?
+    assert translate("translations.html").html_safe?
   end
 
   def test_translate_marks_translations_with_a_html_suffix_as_safe_html
-    I18n.expects(:translate).with(["hello_html"], :raise => true).returns(["<a>Hello World</a>"])
-    assert translate("hello_html").html_safe?
+    assert translate("translations.hello_html").html_safe?
+  end
+
+  def test_translate_escapes_interpolations_in_translations_with_a_html_suffix_with_xss_protection
+    ActionView::Base.expects(:xss_safe?).at_least_once.returns(true)
+    assert_equal '<a>Hello &lt;World&gt;</a>', translate('translations.interpolated_html', :word => '<World>')
+    assert_equal '<a>Hello &lt;World&gt;</a>', translate('translations.interpolated_html', :word => stub(:to_s => "<World>"))
+  end
+
+  def test_translate_does_not_escape_interpolations_in_translations_with_a_html_suffix_without_xss_protection
+    ActionView::Base.expects(:xss_safe?).at_least_once.returns(false)
+    assert_equal '<a>Hello <World></a>', translate('translations.interpolated_html', :word => '<World>')
   end
 
   def test_translation_returning_an_array_ignores_html_suffix
-    I18n.expects(:translate).with(["foo_html"], :raise => true).returns(["foo", "bar"])
-    assert_equal ["foo", "bar"], translate(:foo_html)
+    assert_equal ["foo", "bar"], translate('translations.array_html')
   end
+
 end

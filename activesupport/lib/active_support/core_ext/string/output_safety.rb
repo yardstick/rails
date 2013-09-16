@@ -16,23 +16,12 @@ class ERB
     #
     #   puts html_escape('is a > 0 & a < 10?')
     #   # => is a &gt; 0 &amp; a &lt; 10?
-    if RUBY_VERSION > '1.9'
-      def html_escape(s)
-        s = s.to_s
-        if s.html_safe?
-          s
-        else
-          s.gsub(/[&"'><]/, HTML_ESCAPE).html_safe
-        end
-      end
-    else
-      def html_escape(s)
-        s = s.to_s
-        if s.html_safe?
-          s
-        else
-          s.gsub(/[&"'><]/){ |x| HTML_ESCAPE[x] }.html_safe
-        end
+    def html_escape(s)
+      s = s.to_s
+      if s.html_safe?
+        s
+      else
+        s.gsub(/[&"'><]/, HTML_ESCAPE).html_safe
       end
     end
 

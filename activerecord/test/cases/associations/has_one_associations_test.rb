@@ -32,8 +32,8 @@ class HasOneAssociationsTest < ActiveRecord::TestCase
   def test_finding_using_primary_key
     firm = companies(:first_firm)
     assert_equal Account.find_by_firm_id(firm.id), firm.account
-    firm.firm_id = companies(:rails_core).id
-    assert_equal accounts(:rails_core_account), firm.account_using_primary_key
+    firm.firm_id = companies(:odegy).id
+    assert_equal accounts(:odegy_account), firm.account_using_primary_key
   end
 
   def test_update_with_foreign_and_primary_keys

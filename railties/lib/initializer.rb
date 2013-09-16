@@ -9,6 +9,7 @@ require 'rails/plugin/locator'
 require 'rails/plugin/loader'
 require 'rails/gem_dependency'
 require 'rails/rack'
+require 'rails/rails_lts'
 
 
 RAILS_ENV = (ENV['RAILS_ENV'] || 'development').dup unless defined?(RAILS_ENV)
@@ -126,6 +127,8 @@ module Rails
     def process
       Rails.configuration = configuration
 
+      configure_rails_lts
+
       check_ruby_version
       install_gem_spec_stubs
       set_load_path
@@ -174,6 +177,8 @@ module Rails
       return unless gems_dependencies_loaded
 
       load_application_initializers
+
+      finalize_rails_lts
 
       # the framework is now fully initialized
       after_initialize
@@ -636,6 +641,14 @@ Run `rake gems:install` to install the missing gems.
         ActiveSupport::Dependencies.unhook!
       end
     end
+
+    def configure_rails_lts
+      Rails::RailsLts.configuration = Rails::RailsLts::Configuration.new(Rails.configuration.rails_lts_options)
+    end
+
+    def finalize_rails_lts
+      Rails::RailsLts.finalize
+    end
   end
 
   # The Configuration class holds all the parameters for the Initializer and
@@ -853,6 +866,10 @@ Run `rake gems:install` to install the missing gems.
 
     # Accessor for i18n settings.
     attr_accessor :i18n
+
+    # Accessor for rails-lts opt-in options
+    attr_accessor :rails_lts_options
+
 
     # Create a new Configuration instance, initialized with the default
     # values.

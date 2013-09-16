@@ -13,20 +13,37 @@ module ActionView
       def translate(keys, options = {})
         if multiple_keys = keys.is_a?(Array)
           ActiveSupport::Deprecation.warn "Giving an array to translate is deprecated, please give a symbol or a string instead", caller
+        else
+          keys = Array.wrap(keys)
         end
 
         options[:raise] = true
-        keys = scope_keys_by_partial(keys)
 
-        translations = I18n.translate(keys, options)
-        translations = [translations] if !multiple_keys && translations.size > 1
-        translations = html_safe_translation_keys(keys, translations)
+        translations = keys.map do |key|
+          qualified_key = scope_key_by_partial(key)
+          if html_safe_translation_key?(qualified_key)
+            html_safe_options = options.dup
 
-        if multiple_keys || translations.size > 1
+            if ActionView::Base.xss_safe?
+              reserved_keys = defined?(I18n::RESERVED_KEYS) ? I18n::RESERVED_KEYS : I18n::Backend::Base::RESERVED_KEYS
+              options.except(:raise, *reserved_keys).each do |name, value|
+                html_safe_options[name] = ERB::Util.html_escape(value.to_s)
+              end
+            end
+
+            translation = I18n.translate(qualified_key, html_safe_options)
+            translation.respond_to?(:html_safe) ? translation.html_safe : translation
+          else
+            I18n.translate(qualified_key, options)
+          end
+        end
+
+        if multiple_keys
           translations
         else
           translations.first
         end
+
       rescue I18n::MissingTranslationData => e
         keys = I18n.send(:normalize_translation_keys, e.locale, e.key, e.options[:scope])
         content_tag('span', keys.join(', '), :class => 'translation_missing')
@@ -41,27 +58,21 @@ module ActionView
 
 
       private
-        def scope_keys_by_partial(keys)
-          Array.wrap(keys).map do |key|
-            key = key.to_s
 
-            if key.first == "."
-              template.path_without_format_and_extension.gsub(%r{/_?}, ".") + key
-            else
-              key
-            end
+        def scope_key_by_partial(key)
+          key = key.to_s
+
+          if key.first == "."
+            template.path_without_format_and_extension.gsub(%r{/_?}, ".") + key
+          else
+            key
           end
         end
 
-        def html_safe_translation_keys(keys, translations)
-          keys.zip(translations).map do |key, translation|
-            if key =~ /(\b|_|\.)html$/ && translation.respond_to?(:html_safe)
-              translation.html_safe
-            else
-              translation
-            end
-          end
+        def html_safe_translation_key?(key)
+          key =~ /(\b|_|\.)html$/
         end
+
     end
   end
 end
